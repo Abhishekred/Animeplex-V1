@@ -1,30 +1,92 @@
-name: Diagnose AnimePlex build
+name: AnimePlex unsigned APK
+
 on:
   push:
-    branches: ['codex/animeplex-branding']
+    branches: [main, 'codex/**']
+  schedule:
+    - cron: "30 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: animeplex-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  actions: read
   contents: read
+
 jobs:
-  diagnose:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ZANGETSU_NO_DISCORD: "1"
+      ANIMEPLEX_UNSIGNED: "1"
     steps:
-      - name: Extract previous build errors
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle and build cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+          cache-read-only: false
+
+      - name: Set up Flutter and package cache
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.7"
+          channel: stable
+          cache: true
+          pub-cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check startup animation
+        run: flutter test test/core/ui/splash_style_test.dart test/features/onboarding/animeplex_splash_test.dart
+
+      - name: Prepare release configuration
+        run: flutter build apk --release --config-only
+
+      - name: Build unsigned release APK
         shell: bash
         run: |
           set -euo pipefail
-          gh api --allow-escape-sequences -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/jobs/132073866974/logs" > "$RUNNER_TEMP/previous-build.log"
-          python3 - "$RUNNER_TEMP/previous-build.log" <<'PY'
-          import re, sys
-          with open(sys.argv[1], errors='replace') as f:
-              lines = f.readlines()
-          pattern = re.compile(r'FAILURE:|BUILD FAILED|What went wrong|Execution failed|Caused by:|Could not |error:|Exception', re.I)
-          hits = [i for i, line in enumerate(lines) if pattern.search(line)]
-          chosen = set()
-          for i in hits[-30:]:
-              chosen.update(range(max(0, i - 2), min(len(lines), i + 8)))
-          print('Previous build error excerpts:')
-          print(''.join(lines[i] for i in sorted(chosen)[-200:])[-30000:])
-          PY
+          cd android
+          if ! gradle --no-daemon --console=plain :app:assembleRelease > "$RUNNER_TEMP/gradle-build.log" 2>&1; then
+            tail -n 160 "$RUNNER_TEMP/gradle-build.log"
+            exit 1
+          fi
+          tail -n 40 "$RUNNER_TEMP/gradle-build.log"
+
+      - name: Verify APK has no signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/apk/release/app-release-unsigned.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          signer=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -n 1)
+          test -x "$signer"
+          if "$signer" verify --verbose "$apk" > signature-check.log 2>&1; then
+            echo 'APK is signed; expected an unsigned APK.'
+            exit 1
+          fi
+          if ! grep -q 'DOES NOT VERIFY' signature-check.log; then
+            cat signature-check.log
+            exit 1
+          fi
+          echo 'Unsigned APK verified.'
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimePlex-unsigned-apk
+          path: build/app/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
