@@ -2,9 +2,7 @@ name: AnimePlex unsigned APK
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: [main, 'codex/**']
   schedule:
     - cron: "30 8 * * *"
   workflow_dispatch:
