@@ -64,6 +64,14 @@ jobs:
           fi
           tail -n 40 "$RUNNER_TEMP/gradle-build.log"
 
+      - name: Check Android default source and popup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          gradle --no-daemon --console=plain :app:testReleaseUnitTest \
+            --tests 'com.spyou.watch_app.cloudstream.AnimePlexDefaultSourceTest'
+
       - name: Verify APK has no signature
         shell: bash
         run: |
