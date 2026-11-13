@@ -28,6 +28,7 @@ class CloudStreamSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PhisherPopupGuard.attach(this)
 
         val apiName = intent.getStringExtra(EXTRA_API_NAME)
         if (apiName == null) {

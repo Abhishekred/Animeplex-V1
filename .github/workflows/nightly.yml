@@ -47,8 +47,8 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Check startup animation
-        run: flutter test test/core/ui/splash_style_test.dart test/features/onboarding/animeplex_splash_test.dart
+      - name: Check startup and default sources
+        run: flutter test test/core/ui/splash_style_test.dart test/features/onboarding/animeplex_splash_test.dart test/core/provider/animeplex_default_repo_test.dart test/features/home/source_catalogue_home_content_test.dart
 
       - name: Prepare release configuration
         run: flutter build apk --release --config-only
@@ -71,6 +71,11 @@ jobs:
           apk=build/app/outputs/apk/release/app-release-unsigned.apk
           test -s "$apk"
           unzip -tqq "$apk"
+          if ! cmp -s <(unzip -p "$apk" assets/preinstalled/MovieBoxProvider.cs3) \
+            android/app/src/main/assets/preinstalled/MovieBoxProvider.cs3; then
+            echo 'Bundled MovieBoxProvider is missing or damaged.'
+            exit 1
+          fi
           signer=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -n 1)
           test -x "$signer"
           if "$signer" verify --verbose "$apk" > signature-check.log 2>&1; then

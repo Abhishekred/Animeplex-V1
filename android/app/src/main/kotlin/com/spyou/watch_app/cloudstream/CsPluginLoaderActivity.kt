@@ -22,6 +22,7 @@ class CsPluginLoaderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PhisherPopupGuard.attach(this)
         overridePendingTransition(0, 0)
         val paths = intent.getStringArrayExtra(EXTRA_PATHS) ?: emptyArray()
         val act = this

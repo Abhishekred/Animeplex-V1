@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
@@ -7,6 +9,7 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -97,6 +100,7 @@ class SourceCatalogueHomeContentState
   bool _openingItem = false;
   int _generation = 0;
   StremioManager? _stremioManager;
+  CloudStreamManager? _cloudStreamManager;
 
   ContentMode _modeFor(SourceCatalogueHomeContent widget) =>
       widget.mode ??
@@ -109,6 +113,10 @@ class SourceCatalogueHomeContentState
     super.initState();
     if (sl.isRegistered<StremioManager>()) {
       _stremioManager = sl<StremioManager>()..addListener(_onStremioChanged);
+    }
+    if (sl.isRegistered<CloudStreamManager>()) {
+      _cloudStreamManager = sl<CloudStreamManager>()
+        ..addListener(_onCloudStreamChanged);
     }
     widget.controller?._attach(_controllerOwner, refresh);
     _mode = _modeFor(widget);
@@ -150,6 +158,38 @@ class SourceCatalogueHomeContentState
     _sources = _sourcesForMode();
     _load(reset: true);
     _notifySections(const []);
+  }
+
+  void _onCloudStreamChanged() {
+    if (!mounted || _sourceId == 'stremio') return;
+    final sources = _sourcesForMode();
+    if (listEquals(sources, _sources)) {
+      // The initial scan can finish without finding a source.
+      setState(() {});
+      return;
+    }
+    _sources = sources;
+    _generation++;
+    _sourceId = _chooseSourceId(_sourceId);
+    _sections = null;
+    _failed = false;
+    _loading = false;
+    _rememberSource();
+    _notifySections(const []);
+    if (_sourceId == null) {
+      setState(() {});
+    } else {
+      unawaited(_load(reset: true));
+    }
+  }
+
+  void _retrySources() {
+    final manager = _cloudStreamManager;
+    if (manager == null) {
+      _openSources();
+    } else {
+      unawaited(manager.loadInstalled());
+    }
   }
 
   void _notifySections(List<HomeSection> sections) {
@@ -278,6 +318,7 @@ class SourceCatalogueHomeContentState
   void dispose() {
     widget.controller?._detach(_controllerOwner);
     _stremioManager?.removeListener(_onStremioChanged);
+    _cloudStreamManager?.removeListener(_onCloudStreamChanged);
     super.dispose();
   }
 
@@ -289,13 +330,19 @@ class SourceCatalogueHomeContentState
       children: [
         if (_sources.isEmpty && _sourceId == 'stremio')
           _stremioEmptyState()
+        else if (_sources.isEmpty &&
+            (_cloudStreamManager?.loadingInstalled ?? false))
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (var i = 0; i < 3; i++) _shimmerRow()],
+          )
         else if (_sources.isEmpty)
           _emptyState(
-            icon: Icons.extension_off_rounded,
-            title: 'No sources available',
-            message: 'Install a source to browse its catalogue here.',
-            action: _openSources,
-            actionLabel: 'Browse sources',
+            icon: Icons.cloud_off_outlined,
+            title: 'Could not load your catalogue',
+            message: 'Try again or check your sources.',
+            action: _retrySources,
+            actionLabel: 'Try again',
           )
         else ...[
           if (widget.showSourcePicker) _sourcePicker(),

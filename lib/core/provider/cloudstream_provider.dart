@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:io';
@@ -880,6 +881,9 @@ class CsRepoGroup {
 /// the owner/repo grouping survives a restart even though the loaded sources
 /// themselves are rebuilt from the native host each launch.
 class CloudStreamManager extends ChangeNotifier {
+  static const String defaultRepoUrl =
+      'https://raw.githubusercontent.com/Abhishekred/Stream-1/refs/heads/builds/repo.json';
+  static const String _defaultRepoKey = 'animeplexDefaultRepoInitialized';
   /// Hive box name for the persisted repo list.
   static const String boxName = 'cs_repos';
   static const String _reposKey = 'repos';
@@ -895,6 +899,10 @@ class CloudStreamManager extends ChangeNotifier {
   }
 
   final Map<String, CloudStreamProvider> _providers = {};
+  bool _loadingInstalled = true;
+
+  /// Whether the initial native extension scan is still in progress.
+  bool get loadingInstalled => _loadingInstalled;
 
   /// In-memory mirror of the persisted repo list: each entry is
   /// `{url, name, files:[...]}`. Loaded on [loadInstalled], upserted on
@@ -1435,6 +1443,30 @@ class CloudStreamManager extends ChangeNotifier {
     );
   }
 
+  /// Seed the default repository from a bundled snapshot, even while offline.
+  /// The marker preserves a later deliberate repo removal by the user.
+  Future<void> ensureDefaultRepo() async {
+    final box = _box;
+    if (box == null || box.get(_defaultRepoKey) == true) return;
+    if (!hasRepo(defaultRepoUrl)) {
+      List<dynamic> plugins = const [];
+      try {
+        final decoded = jsonDecode(
+          await rootBundle.loadString('assets/cloudstream/stream1_plugins.json'),
+        );
+        if (decoded is List) plugins = decoded;
+      } catch (e) {
+        debugPrint('[cloudstream] bundled repo catalog unavailable: $e');
+      }
+      _upsertRepo({
+        'url': defaultRepoUrl,
+        'name': 'Stream-1',
+        'plugins': plugins,
+      }, fallbackUrl: defaultRepoUrl);
+    }
+    await box.put(_defaultRepoKey, true);
+  }
+
   /// Reads the persisted repo list into [_repos]. Each entry is normalized to
   /// `{url, name, files:[String...]}`.
   void _loadRepos() {
@@ -1549,20 +1581,30 @@ class CloudStreamManager extends ChangeNotifier {
   /// persisted repo list into memory. No-op (channel) on non-Android; failures
   /// are swallowed so a missing native channel can't break startup.
   Future<void> loadInstalled() async {
+    _loadingInstalled = true;
     _loadRepos();
     if (!Platform.isAndroid) {
+      _loadingInstalled = false;
       notifyListeners();
       return;
     }
     _wireRepoAddedBridge();
     try {
+      await ensureDefaultRepo();
       final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
       _rebuildFrom(raw);
       _migrateLegacyRepo();
     } catch (e) {
       debugPrint('[cloudstream] listSources failed: $e');
+    } finally {
+      _loadingInstalled = false;
+      notifyListeners();
     }
-    notifyListeners();
+    // The bundled catalog is immediately usable; refresh it in the background
+    // so newly published extensions and versions also appear when online.
+    if (hasRepo(defaultRepoUrl)) {
+      unawaited(addRepo(defaultRepoUrl).catchError((Object _) => 0));
+    }
   }
 
   /// One-time migration for repos saved before file-based attribution existed:

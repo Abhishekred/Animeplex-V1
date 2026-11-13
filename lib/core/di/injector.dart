@@ -85,6 +85,7 @@ import '../environment.dart';
 import '../metadata/tmdb.dart';
 import 'package:watch_app/core/metadata/tmdb_fallback.dart';
 import '../metadata/title_logo_service.dart';
+import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_graphql.dart';
@@ -1243,9 +1244,25 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       // when the saved id is now valid — it never resets an already-restored
       // source — so this composes cleanly with the Aniyomi step above.
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        final changed = sl<ActiveSourceCubit>().reapplySaved(
+        final active = sl<ActiveSourceCubit>();
+        var changed = active.reapplySaved(
           (id) => csManager.get(id) != null,
         );
+        // Pick the bundled source only when no working user choice exists.
+        // Saved selections from other ecosystems are restored by their own
+        // deferred boot steps and must not be overwritten.
+        final saved = active.savedSource;
+        if ((saved == null || saved == 'allanime') &&
+            !sl<SourceRepository>().hasSource(active.state) &&
+            sl<ContentModeCubit>().state == ContentMode.anime) {
+          final moviebox = csManager.enabled.where(
+            (p) => p.sourcePlugin?.split('@').first == 'MovieBoxProvider',
+          ).firstOrNull;
+          if (moviebox != null) {
+            active.setSource(moviebox.sourceId);
+            changed = true;
+          }
+        }
         if (changed && sl.isRegistered<HomeCubit>()) {
           sl<HomeCubit>().load(); // reload Home for the restored source
         }
