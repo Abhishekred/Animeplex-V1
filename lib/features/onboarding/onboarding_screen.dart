@@ -2,8 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/ui/splash_style.dart';
-import 'bankai_splash.dart';
+import 'animeplex_splash.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
@@ -43,23 +42,8 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1600),
+    duration: const Duration(milliseconds: 2400),
   )..forward();
-
-  // Glow eases in; the wordmark fades in and "draws" left→right (wipe reveal)
-  // while settling up to full scale; the loader appears last.
-  late final Animation<double> _glow = CurvedAnimation(
-    parent: _c,
-    curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
-  );
-  late final Animation<double> _fade = CurvedAnimation(
-    parent: _c,
-    curve: const Interval(0.12, 0.5, curve: Curves.easeOut),
-  );
-  late final Animation<double> _reveal = CurvedAnimation(
-    parent: _c,
-    curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic),
-  );
 
   @override
   void dispose() {
@@ -67,89 +51,28 @@ class _SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
-  /// Read once, at the start of the animation — the picker writes the box, and
-  /// re-reading mid-build would let a change take effect halfway through a run.
-  late final bool _bankai = SplashStyle.selectedId == 'bankai';
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          // The mark being cut in, driven by the same controller — one ticker
-          // either way, so picking it costs nothing the wordmark did not.
-          if (_bankai) {
-            return Center(
-              child: LayoutBuilder(
-                builder: (context, box) => BankaiSplash(
-                  progress: _c.value,
-                  size: math.min(box.maxWidth * 0.62, 320),
-                ),
+      backgroundColor: const Color(0xFF080C19),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            colors: [Color(0xFF19264C), Color(0xFF0C1429), Color(0xFF080C19)],
+            stops: [0.0, 0.35, 0.85],
+          ),
+        ),
+        child: Center(
+          child: LayoutBuilder(
+            builder: (context, box) => AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) => AnimePlexSplash(
+                progress: _c.value,
+                size: math.min(box.maxWidth * 0.66, 320.0),
               ),
-            );
-          }
-          final r = _reveal.value;
-          return Stack(
-            children: [
-              // Soft coral glow behind the wordmark — echoes the logo's circle.
-              Center(
-                child: Opacity(
-                  opacity: _glow.value,
-                  child: Container(
-                    width: 460,
-                    height: 460,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          AppColors.accent.withValues(alpha: 0.18),
-                          AppColors.accent.withValues(alpha: 0.05),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.45, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Wordmark — wipe reveal (left→right) + fade + slight scale settle.
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: 0.62,
-                  child: Opacity(
-                    opacity: _fade.value,
-                    child: Transform.scale(
-                      scale: 0.94 + 0.06 * r,
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback: (rect) => LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: const [
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                          stops: [
-                            0.0,
-                            (r - 0.07).clamp(0.0, 1.0),
-                            r.clamp(0.0001, 1.0),
-                          ],
-                        ).createShader(rect),
-                        child: Image.asset(
-                          'assets/icon/wordmark.png',
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+        ),
       ),
     );
   }
