@@ -24,12 +24,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java and Gradle cache
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+
+      - name: Set up Gradle and build cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+          cache-read-only: false
 
       - name: Set up Flutter and package cache
         uses: subosito/flutter-action@v2
@@ -56,7 +61,7 @@ jobs:
           printf 'flutter.sdk=%s\nsdk.dir=%s\nflutter.versionName=%s\nflutter.versionCode=%s\n' \
             "$FLUTTER_ROOT" "$ANDROID_HOME" "$build_name" "$build_number" > android/local.properties
           cd android
-          ./gradlew --no-daemon :app:assembleRelease
+          gradle --no-daemon :app:assembleRelease
 
       - name: Verify APK has no signature
         shell: bash
