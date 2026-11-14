@@ -200,7 +200,7 @@ Future<void> main() async {
       // immediately instead of a blank screen.
       runApp(WatchApp(bootOffline: bootOffline));
       // Non-blocking admin configuration sync; never delays startup.
-      unawaited(AnimeplexRemoteConfig.instance.refresh());
+      unawaited(AnimeplexRemoteConfig.instance.refreshAll());
     },
     (error, stack) {
       AppLogger.instance.logError(error, stack);
