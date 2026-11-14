@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../onboarding/bankai_splash.dart';
+import '../onboarding/animeplex_splash.dart';
 import '../../core/app_icon/app_icon_service.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -275,7 +275,7 @@ class _SplashCardState extends State<_SplashCard>
   // instead of the loop reading as a flicker.
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2600),
+    duration: const Duration(milliseconds: 3400),
   )..repeat();
 
   @override
@@ -285,7 +285,7 @@ class _SplashCardState extends State<_SplashCard>
   }
 
   /// Maps the looping controller onto the animation, holding at the end.
-  double get _t => (_c.value / 0.62).clamp(0.0, 1.0);
+  double get _t => (_c.value / (2400 / 3400)).clamp(0.0, 1.0).toDouble();
 
   @override
   Widget build(BuildContext context) {
@@ -311,20 +311,9 @@ class _SplashCardState extends State<_SplashCard>
               clipBehavior: Clip.antiAlias,
               child: AnimatedBuilder(
                 animation: _c,
-                builder: (context, _) => widget.option.id == 'bankai'
-                    ? Center(child: BankaiSplash(progress: _t, size: 72))
-                    : Center(
-                        child: Opacity(
-                          opacity: _t.clamp(0.0, 1.0),
-                          child: FractionallySizedBox(
-                            widthFactor: 0.82,
-                            child: Image.asset(
-                              'assets/icon/wordmark.png',
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
-                      ),
+                builder: (context, _) => Center(
+                  child: AnimePlexSplash(progress: _t, size: 72),
+                ),
               ),
             ),
             const SizedBox(height: 8),

@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
@@ -51,7 +52,6 @@ import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
-import '../community/community_sheet.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
@@ -232,10 +232,7 @@ class _HomeViewState extends State<_HomeView>
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await maybeShowUpdateDialog(context);
-        // One-time community welcome (its own flag, independent of the per-id
-        // announcement feed), then any new developer announcement — all awaited
-        // in sequence so the modals never fight over the stack.
-        if (mounted) await maybeShowCommunitySheet(context);
+        // Show any new developer announcement after the update check.
         if (mounted) await maybeShowAnnouncement(context);
       });
       _checkSourceUpdates();
@@ -820,7 +817,7 @@ class _HomeViewState extends State<_HomeView>
           final splitEdgeHeader = edgeBanner && constraints.maxWidth < 520;
           final brand = edgeBanner
               ? IconButton(
-                  tooltip: 'Zangetsu',
+                  tooltip: kAppName,
                   onPressed: () => _openHomeCataloguePicker(),
                   icon: Image.asset(
                     'assets/icon/logo_mark.png',
@@ -837,11 +834,7 @@ class _HomeViewState extends State<_HomeView>
                     // 48px minimum tap target, and vertical padding alone
                     // cannot shift a left-aligned image.
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Image.asset(
-                      'assets/icon/wordmark.png',
-                      height: 22,
-                      fit: BoxFit.contain,
-                    ),
+                    child: Text(kAppName, style: AppText.title),
                   ),
                 );
           final actions = [

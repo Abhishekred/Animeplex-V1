@@ -39,6 +39,9 @@ val noDiscord =
 val isNightly =
     System.getenv("ZANGETSU_NIGHTLY") == "1" || project.hasProperty("nightly")
 
+// CI produces an unsigned release APK for manual signing in MT Manager.
+val unsignedBuild = System.getenv("ANIMEPLEX_UNSIGNED") == "1"
+
 android {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
@@ -65,7 +68,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        resValue("string", "app_name", if (isNightly) "Zangetsu Nightly" else "Zangetsu")
+        resValue("string", "app_name", "AnimePlex")
         if (noDiscord) {
             externalNativeBuild {
                 cmake {
@@ -169,7 +172,9 @@ android {
                 signingConfigs.getByName("debug")
         }
         release {
-            signingConfig = if (hasReleaseKeystore)
+            signingConfig = if (unsignedBuild)
+                null
+            else if (hasReleaseKeystore)
                 signingConfigs.getByName("release")
             else
                 signingConfigs.getByName("debug")

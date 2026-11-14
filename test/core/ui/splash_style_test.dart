@@ -18,37 +18,37 @@ void main() {
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });
 
-  test('an untouched install gets Bankai', () {
-    expect(SplashStyle.selectedId, 'bankai');
-    expect(SplashStyle.defaultId, 'bankai');
+  test('an untouched install gets AnimePlex', () {
+    expect(SplashStyle.selectedId, 'animeplex');
+    expect(SplashStyle.defaultId, 'animeplex');
   });
 
-  test('an existing saved Wordmark selection survives reopening', () async {
-    await Hive.box(SplashStyle.boxName).put('splashStyleId', 'wordmark');
-    await Hive.box(SplashStyle.boxName).close();
-    await Hive.openBox(SplashStyle.boxName);
-    expect(SplashStyle.selectedId, 'wordmark');
+  test('old splash choices fall back to the AnimePlex logo', () async {
+    for (final oldId in ['bankai', 'wordmark']) {
+      await Hive.box(SplashStyle.boxName).put('splashStyleId', oldId);
+      expect(SplashStyle.selectedId, 'animeplex');
+    }
   });
 
   test('a choice is remembered', () async {
-    await SplashStyle.select('bankai');
-    expect(SplashStyle.selectedId, 'bankai');
+    await SplashStyle.select('animeplex');
+    expect(SplashStyle.selectedId, 'animeplex');
   });
 
   test('an id this build no longer ships falls back to the default', () async {
     Hive.box(SplashStyle.boxName).put('splashStyleId', 'some-old-style');
-    expect(SplashStyle.selectedId, 'bankai');
+    expect(SplashStyle.selectedId, 'animeplex');
   });
 
   test('a non-string value falls back rather than throwing', () {
     Hive.box(SplashStyle.boxName).put('splashStyleId', 42);
-    expect(SplashStyle.selectedId, 'bankai');
+    expect(SplashStyle.selectedId, 'animeplex');
   });
 
   test('an unknown id is refused, not stored', () async {
-    await SplashStyle.select('bankai');
+    await SplashStyle.select('animeplex');
     await SplashStyle.select('nonsense');
-    expect(SplashStyle.selectedId, 'bankai');
+    expect(SplashStyle.selectedId, 'animeplex');
   });
 
   test('the default option exists and leads the list', () {
@@ -73,7 +73,7 @@ void main() {
 
     test('a write against a closed box is a no-op, not a crash', () async {
       await Hive.close();
-      await expectLater(SplashStyle.select('bankai'), completes);
+      await expectLater(SplashStyle.select('animeplex'), completes);
     });
   });
 }

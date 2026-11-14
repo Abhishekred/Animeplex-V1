@@ -1,13 +1,14 @@
-name: Nightly debug build
+name: AnimePlex unsigned APK
 
 on:
+  push:
+    branches: [main, 'codex/**']
   schedule:
-    # 08:30 UTC = 2:00pm IST (GitHub cron is always UTC).
     - cron: "30 8 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: nightly-debug
+  group: animeplex-unsigned-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,7 +17,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      ZANGETSU_NO_DISCORD: "1"
+      ANIMEPLEX_UNSIGNED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -26,28 +30,76 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Flutter
+      - name: Set up Gradle and build cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+          cache-read-only: false
+
+      - name: Set up Flutter and package cache
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.44.7"
           channel: stable
           cache: true
+          pub-cache: true
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build debug APK
-        # The proprietary Discord SDK is gitignored, so CI builds without it.
-        # ZANGETSU_NIGHTLY gives it its own package (.nightly) + launcher name
-        # so it installs alongside release instead of "updating" it.
-        env:
-          ZANGETSU_NO_DISCORD: "1"
-          ZANGETSU_NIGHTLY: "1"
-        run: flutter build apk --debug
+      - name: Check startup and default sources
+        run: flutter test test/core/ui/splash_style_test.dart test/features/onboarding/animeplex_splash_test.dart test/core/provider/animeplex_default_repo_test.dart test/features/home/source_catalogue_home_content_test.dart
 
-      - name: Upload APK
+      - name: Prepare release configuration
+        run: flutter build apk --release --config-only
+
+      - name: Build unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          if ! gradle --no-daemon --console=plain :app:assembleRelease > "$RUNNER_TEMP/gradle-build.log" 2>&1; then
+            tail -n 160 "$RUNNER_TEMP/gradle-build.log"
+            exit 1
+          fi
+          tail -n 40 "$RUNNER_TEMP/gradle-build.log"
+
+      - name: Check Android default source and popup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          gradle --no-daemon --console=plain :app:testReleaseUnitTest \
+            --tests 'com.spyou.watch_app.cloudstream.AnimePlexDefaultSourceTest'
+
+      - name: Verify APK has no signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/apk/release/app-release-unsigned.apk
+          test -s "$apk"
+          unzip -tqq "$apk"
+          if ! cmp -s <(unzip -p "$apk" assets/preinstalled/MovieBoxProvider.cs3) \
+            android/app/src/main/assets/preinstalled/MovieBoxProvider.cs3; then
+            echo 'Bundled MovieBoxProvider is missing or damaged.'
+            exit 1
+          fi
+          signer=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -n 1)
+          test -x "$signer"
+          if "$signer" verify --verbose "$apk" > signature-check.log 2>&1; then
+            echo 'APK is signed; expected an unsigned APK.'
+            exit 1
+          fi
+          if ! grep -q 'DOES NOT VERIFY' signature-check.log; then
+            cat signature-check.log
+            exit 1
+          fi
+          echo 'Unsigned APK verified.'
+
+      - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: zangetsu-nightly
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: AnimePlex-unsigned-apk
+          path: build/app/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
           retention-days: 14

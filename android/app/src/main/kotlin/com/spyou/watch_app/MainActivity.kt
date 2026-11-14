@@ -214,6 +214,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // The manifest meta-data is unchanged; we just have to read it ourselves.
         switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        com.spyou.watch_app.cloudstream.PhisherPopupGuard.attach(this)
         reconcileIconAliases()
         setContentView(R.layout.activity_main)
         // Survives configuration changes / process death: re-attaching a second
@@ -887,6 +888,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     "listSources" -> {
                         csExecutor.execute {
                             try {
+                                // The default source is bundled, so it is ready even
+                                // when GitHub is unreachable on the first launch.
+                                runCatching { repo.ensureBundledMovieBox() }
+                                    .onFailure { android.util.Log.w("CloudStream", "Default source setup failed", it) }
                                 host.loadAll(repo.cachedFiles())
                                 // Retry any that hard-failed on the AppCompatActivity
                                 // cast against a real activity, so they survive a
