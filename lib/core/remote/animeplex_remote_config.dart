@@ -18,7 +18,37 @@ class AnimeplexRemoteConfig {
 
   final Dio _dio;
   Map<String, dynamic> _settings = const {};
+  List<Map<String, dynamic>> _announcements = const [];
+  List<Map<String, dynamic>> _featured = const [];
+  List<Map<String, dynamic>> get announcements => List.unmodifiable(_announcements);
+  List<Map<String, dynamic>> get featured => List.unmodifiable(_featured);
   Map<String, dynamic> get settings => Map.unmodifiable(_settings);
+
+  Future<void> refreshAll() async {
+    await Future.wait([refresh(), refreshAnnouncements(), refreshFeatured()]);
+  }
+
+  Future<void> refreshAnnouncements() async {
+    try {
+      final response = await _dio.get<dynamic>('https://animeplex-admin-control.vercel.app/api/app/announcements');
+      final data = response.data is String ? jsonDecode(response.data as String) : response.data;
+      if (data is Map && data['announcements'] is List) {
+        _announcements = List.unmodifiable((data['announcements'] as List)
+            .whereType<Map>().map((item) => Map<String, dynamic>.from(item)));
+      }
+    } catch (_) { /* Offline: retain previous feed. */ }
+  }
+
+  Future<void> refreshFeatured() async {
+    try {
+      final response = await _dio.get<dynamic>('https://animeplex-admin-control.vercel.app/api/app/featured');
+      final data = response.data is String ? jsonDecode(response.data as String) : response.data;
+      if (data is Map && data['featured'] is List) {
+        _featured = List.unmodifiable((data['featured'] as List)
+            .whereType<Map>().map((item) => Map<String, dynamic>.from(item)));
+      }
+    } catch (_) { /* Offline: retain previous feed. */ }
+  }
 
   Future<Map<String, dynamic>> refresh() async {
     try {
