@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
+import 'core/remote/animeplex_remote_config.dart';
 import 'core/app_mode.dart';
 import 'core/boot_network.dart';
 import 'core/di/injector.dart';
@@ -198,6 +199,8 @@ Future<void> main() async {
       // Dependency init happens inside the boot gate so the splash shows
       // immediately instead of a blank screen.
       runApp(WatchApp(bootOffline: bootOffline));
+      // Non-blocking admin configuration sync; never delays startup.
+      unawaited(AnimeplexRemoteConfig.instance.refresh());
     },
     (error, stack) {
       AppLogger.instance.logError(error, stack);
