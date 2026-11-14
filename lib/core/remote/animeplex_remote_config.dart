@@ -11,6 +11,8 @@ class AnimeplexRemoteConfig {
     ),
   );
 
+  static final AnimeplexRemoteConfig instance = AnimeplexRemoteConfig();
+
   static const endpoint =
       'https://animeplex-admin-control.vercel.app/api/app/config';
 
