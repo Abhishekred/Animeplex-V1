@@ -33,7 +33,11 @@ Future<void> maybeShowUpdateDialog(
   }
   await showDialog<void>(
     context: context,
-    builder: (_) => _UpdateDialog(info: info, service: service),
+    barrierDismissible: !info.mandatory,
+    builder: (_) => PopScope(
+      canPop: !info.mandatory,
+      child: _UpdateDialog(info: info, service: service),
+    ),
   );
 }
 
@@ -131,6 +135,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       final file = await widget.service.downloadApk(
         widget.info.apkUrl,
         expectedSize: widget.info.apkSize,
+        expectedSha256: widget.info.sha256,
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
@@ -188,6 +193,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 ),
               ],
             ),
+            if (widget.info.mandatory) ...[
+              const SizedBox(height: 8),
+              Text('Required update — install this version to continue.',
+                style: AppText.caption.copyWith(color: AppColors.accent)),
+            ],
             const SizedBox(height: 4),
             Text(
               'Version ${widget.info.version}',
@@ -237,7 +247,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 spacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (!_busy)
+                  if (!_busy && !widget.info.mandatory)
                     TextButton(
                       onPressed: () async {
                         await widget.service.skipVersion(widget.info.version);
@@ -250,7 +260,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         ),
                       ),
                     ),
-                  if (!_busy)
+                  if (!_busy && !widget.info.mandatory)
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text(
