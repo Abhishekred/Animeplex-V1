@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
+import 'core/update/mandatory_update_gate.dart';
 import 'core/remote/animeplex_remote_config.dart';
 import 'core/app_mode.dart';
 import 'core/boot_network.dart';
@@ -789,7 +790,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               : (child ?? const SizedBox.shrink());
           final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
           return PosterCardScope(
-            child: isTv ? TvViewport(child: content) : content,
+            child: MandatoryUpdateGate(
+              child: isTv ? TvViewport(child: content) : content,
+            ),
           );
         },
       ),
