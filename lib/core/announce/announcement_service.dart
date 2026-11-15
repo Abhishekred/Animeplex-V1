@@ -4,12 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_config.dart';
+import '../update/admin_remote_settings.dart';
 import 'announcement.dart';
 
-/// Fetches the developer announcements feed (a public JSON file in the app repo)
+/// Fetches the public announcements feed managed by AnimePlex Admin
 /// and records any not-yet-seen announcements that target the running version.
 ///
-/// Read-only and fail-safe: offline, GitHub down, or malformed JSON all resolve
+/// Read-only and fail-safe: offline, API unavailable, or malformed JSON all resolve
 /// to "nothing new" — it never throws and never blocks launch.
 class AnnouncementService {
   AnnouncementService(this._dio, this._store);
@@ -22,11 +23,12 @@ class AnnouncementService {
   /// the store. Returns `[]` on any error.
   Future<List<Announcement>> check() async {
     try {
+      await AdminRemoteSettings.instance.refresh();
+      if (!AdminRemoteSettings.instance.enabled('announcements_enabled')) return const [];
       final res = await _dio.get<String>(
         kAnnouncementsUrl,
         options: Options(
-          // raw.githubusercontent serves .json as text/plain, so take the raw
-          // body and decode it ourselves rather than trusting content-type.
+          // Decode the raw JSON body independently of the response content type.
           responseType: ResponseType.plain,
           receiveTimeout: const Duration(seconds: 12),
           sendTimeout: const Duration(seconds: 12),
