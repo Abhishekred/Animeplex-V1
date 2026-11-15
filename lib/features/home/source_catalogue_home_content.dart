@@ -279,6 +279,7 @@ class SourceCatalogueHomeContentState
       }
       unawaited(Analytics.log('source_load', {
         'outcome': 'success',
+        'source_id': sourceId.length <= 100 ? sourceId : sourceId.substring(0, 100),
         'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
         'section_count': sections.length,
       }));
@@ -296,6 +297,7 @@ class SourceCatalogueHomeContentState
       }
       unawaited(Analytics.log('source_load', {
         'outcome': 'failure',
+        'source_id': sourceId.length <= 100 ? sourceId : sourceId.substring(0, 100),
         'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
       }));
       setState(() {
