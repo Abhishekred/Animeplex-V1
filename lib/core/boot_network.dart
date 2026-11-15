@@ -15,7 +15,9 @@ Future<bool> probeBootOffline({
 }) async {
   if (host.isEmpty) return false;
   try {
-    final socket = await Socket.connect(host, 443, timeout: timeout);
+    final addresses = await InternetAddress.lookup(host).timeout(timeout);
+    if (addresses.isEmpty) return true;
+    final socket = await Socket.connect(addresses.first, 443, timeout: timeout);
     socket.destroy();
     return false;
   } catch (_) {
