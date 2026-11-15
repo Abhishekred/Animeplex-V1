@@ -57,6 +57,7 @@ class PushService {
     // the in-app Notifications list) with it.
     try {
       await fm.subscribeToTopic('all');
+      await fm.subscribeToTopic('app_updates');
     } catch (_) {}
     // Foreground: draw it (FCM stays silent up front) + record it.
     FirebaseMessaging.onMessage.listen((m) {
