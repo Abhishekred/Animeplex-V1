@@ -20,19 +20,7 @@ const _seenKey = 'communitySheetSeen';
 /// independent of the per-id announcement system, so future announcements still
 /// show. Fire-and-forget; never throws (a welcome must not block startup).
 Future<void> maybeShowCommunitySheet(BuildContext context) async {
-  try {
-    final box = Hive.isBoxOpen(_flagsBox)
-        ? Hive.box(_flagsBox)
-        : await openBoxSafely(_flagsBox);
-    if (box.get(_seenKey) == true) return;
-    if (!context.mounted) return;
-    await showCommunitySheet(context);
-    // Mark seen after it's shown; if the app is killed mid-sheet it may show
-    // once more next launch — acceptable, and safer than never showing it.
-    await box.put(_seenKey, true);
-  } catch (_) {
-    // Never break launch on the welcome sheet.
-  }
+  // Community welcome prompt disabled for AnimePlex.
 }
 
 /// Show the community sheet directly (bypasses the seen-flag) — e.g. a future
