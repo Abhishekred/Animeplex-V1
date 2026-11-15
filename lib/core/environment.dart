@@ -47,7 +47,7 @@ class Environment {
 
   /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
   /// it (see [OpenLinkService] + the Android manifest intent-filter).
-  static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
+  static const String openLinkScheme = 'animeplex';
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';
 
