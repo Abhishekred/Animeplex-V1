@@ -33,6 +33,7 @@ class PushService {
   static final PushService instance = PushService._();
 
   bool _inited = false;
+  final Set<String> _foregroundMessageIds = <String>{};
 
   Future<void> init() async {
     if (_inited || !(Platform.isAndroid || Platform.isIOS)) return;
@@ -59,10 +60,14 @@ class PushService {
     } catch (_) {}
     // Foreground: draw it (FCM stays silent up front) + record it.
     FirebaseMessaging.onMessage.listen((m) {
+      // Ignore repeated delivery of the same FCM message in this session.
+      final messageId = m.messageId;
+      if (messageId != null && !_foregroundMessageIds.add(messageId)) return;
+      if (_foregroundMessageIds.length > 200) _foregroundMessageIds.clear();
       final n = m.notification;
       if (n != null) {
         NotificationService.instance.showMessage(
-          id: m.hashCode & 0x7fffffff,
+          id: (m.messageId ?? m.hashCode.toString()).hashCode & 0x7fffffff,
           title: n.title ?? 'Zangetsu',
           body: n.body ?? '',
           imageUrl: n.android?.imageUrl,
