@@ -3,6 +3,7 @@ import '../update/admin_remote_settings.dart';
 import '../repository/catalogue_repository.dart';
 import 'notification_service.dart';
 import 'subscription_store.dart';
+import 'notification_prefs.dart';
 
 /// Re-checks each subscribed show's source for new episodes or chapters
 /// (CloudStream-style) and fires a notification when the count has grown. Uses
@@ -40,7 +41,8 @@ class SubscriptionChecker {
               : 'episode_notifications_enabled';
           // Keep the baseline in sync even when alerts are disabled, so
           // re-enabling never floods the user with old episodes/chapters.
-          final alertsEnabled = AdminRemoteSettings.instance.enabled(setting);
+          final alertsEnabled = AdminRemoteSettings.instance.enabled(setting) &&
+              NotificationPrefs.enabled(sub.isReading ? NotificationPrefs.chapter : NotificationPrefs.episode);
           final eps = await _repo
               .episodes(sub.url, sourceId: sub.sourceId)
               .timeout(const Duration(seconds: 25));
