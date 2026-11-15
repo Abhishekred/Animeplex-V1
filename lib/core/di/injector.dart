@@ -275,29 +275,23 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
         )
       : sl<SupabaseService>().currentUserId();
 
-  // Supabase issues auth tokens; cloud data requests use the VPS client.
-  final endpoint = Uri.tryParse(Environment.vpsSyncUrl);
-  if (endpoint == null ||
-      endpoint.scheme != 'https' ||
-      endpoint.host.isEmpty ||
-      endpoint.userInfo.isNotEmpty ||
-      endpoint.hasQuery ||
-      endpoint.hasFragment) {
-    throw StateError('VPS_SYNC_URL must be a valid HTTPS sync endpoint');
-  }
-  final vpsClient = PostgrestClient(
-    endpoint.toString().replaceFirst(RegExp(r'/$'), ''),
+  // Use the same Supabase project for Auth + cloud data. Keep this client
+  // independent from session restore so offline boot still initializes stores.
+  final cloudClient = PostgrestClient(
+    '${Environment.supabaseUrl.replaceFirst(RegExp(r'/$'), '')}/rest/v1',
+    headers: {'apikey': Environment.supabaseAnonKey},
   );
   String? cloudAccessToken() =>
       sl<SupabaseService>().client.auth.currentSession?.accessToken;
-  const backendNamespace = 'vps';
+  // New namespace prevents stale VPS cursors from skipping the first cloud pull.
+  const backendNamespace = 'supabase-20261116';
 
   await ViewerProfileStore.init();
   sl.registerSingleton<ViewerProfileStore>(
     ViewerProfileStore(
       remote: ViewerProfileRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
       currentUserId: currentUserId,
@@ -313,14 +307,14 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   );
   sl.registerSingleton<ProfileLockStore>(
     SyncedProfileLockStore(
-      remote: PostgrestProfileLockRemote(vpsClient, cloudAccessToken),
+      remote: PostgrestProfileLockRemote(cloudClient, cloudAccessToken),
       currentUserId: currentUserId,
       isOffline: isOffline,
       onGrantsChanged: (grants) {
         if (grants.isEmpty) {
-          vpsClient.headers.remove('x-profile-grants');
+          cloudClient.headers.remove('x-profile-grants');
         } else {
-          vpsClient.headers['x-profile-grants'] = jsonEncode(grants);
+          cloudClient.headers['x-profile-grants'] = jsonEncode(grants);
         }
       },
       isolateGuestData: () => sl<ViewerProfileStore>().isolateGuestData(),
@@ -381,7 +375,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       currentUserId,
       remote: HistoryRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
       currentProfileId: currentProfileId,
@@ -395,7 +389,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       currentUserId,
       remote: ReadingHistoryRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
       currentProfileId: currentProfileId,
@@ -423,7 +417,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
     CategoryStore(
       remote: CategoryRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
       currentUserId: currentUserId,
@@ -438,7 +432,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       currentUserId,
       remote: MyListRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
       currentProfileId: currentProfileId,
@@ -453,7 +447,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       sl<SupabaseService>(),
       remote: BackupRemote(
         sl<SupabaseService>(),
-        vpsClient: vpsClient,
+        vpsClient: cloudClient,
         accessToken: cloudAccessToken,
       ),
     ),
