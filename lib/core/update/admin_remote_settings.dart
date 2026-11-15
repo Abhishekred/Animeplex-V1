@@ -42,4 +42,9 @@ class AdminRemoteSettings {
   }
 
   bool enabled(String key) => _settings[key] != false;
+
+  String text(String key, {String fallback = ''}) {
+    final value = _settings[key];
+    return value is String ? value : fallback;
+  }
 }
