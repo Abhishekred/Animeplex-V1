@@ -1566,7 +1566,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Turn off Material You to pick a colour yourself';
 
   @override
-  String get downloadsZangetsu => 'Downloads › Zangetsu';
+  String get downloadsZangetsu => 'Downloads › AnimePlex';
 
   @override
   String get removableDrive => 'Removable drive';
