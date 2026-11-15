@@ -113,6 +113,13 @@
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
             </intent-filter>
+            <!-- Verified HTTPS links for shared AnimePlex titles. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="abhixtinku.online" android:pathPrefix="/open/"/>
+            </intent-filter>
             <!-- Keep the hostless Discord callback separate from tracker hosts. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
