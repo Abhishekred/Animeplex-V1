@@ -44,11 +44,8 @@ class UpdateInfo {
 /// the latest tag to the running build, downloads the matching APK and hands it
 /// to the Android package installer. The repo is public, so no token is needed.
 class UpdateService {
-  static const String _repo = 'Spyou/Zangetsu';
-  static const String _latestUrl =
-      'https://api.github.com/repos/$_repo/releases/latest';
   static const String _releasesUrl =
-      'https://api.github.com/repos/$_repo/releases?per_page=10';
+      'https://animeplex-admin-control.vercel.app/api/app/releases';
   static const String _boxName = 'updates';
   static const String _skipKey = 'skippedVersion';
   static const String _betaKey = 'betaOptIn';
@@ -62,75 +59,56 @@ class UpdateService {
   Future<UpdateInfo?> checkForUpdate({bool respectSkip = false}) async {
     try {
       final beta = await betaOptIn();
-      final release =
-          beta ? await _newestBetaRelease() : await _latestStableRelease();
+      final release = await _latestAdminRelease(beta: beta);
       if (release == null) return null;
 
-      final rawTag = ((release['tag_name'] as String?) ?? '').trim();
-      if (rawTag.isEmpty) return null;
-      final version = rawTag.startsWith('v') ? rawTag.substring(1) : rawTag;
+      final version = ((release['version'] as String?) ?? '').trim();
+      if (version.isEmpty) return null;
 
       final pkg = await PackageInfo.fromPlatform();
       if (compareVersions(version, pkg.version) <= 0) return null;
-      if (respectSkip && await _skippedVersion() == version) return null;
+      if (respectSkip && await _skippedVersion() == version &&
+          release['mandatory'] != true) return null;
 
-      final apk = _pickApk(
-          (release['assets'] as List?) ?? const [], await _deviceAbis());
-      if (apk == null) return null;
-
+      final apkUrl = (release['download_url'] as String?) ?? '';
+      final uri = Uri.tryParse(apkUrl);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+      final apkSize = (release['file_size'] as num?)?.toInt() ?? 0;
+      final assetName = uri.pathSegments.isEmpty ? 'animeplex-update.apk' : uri.pathSegments.last;
       return UpdateInfo(
         version: version,
-        notes: ((release['body'] as String?) ?? '').trim(),
-        apkUrl: apk.$2,
-        assetName: apk.$1,
-        apkSize: apk.$3,
-        isPrerelease: release['prerelease'] == true,
+        notes: ((release['release_notes'] as String?) ?? '').trim(),
+        apkUrl: apkUrl,
+        assetName: assetName,
+        apkSize: apkSize,
+        isPrerelease: release['channel'] == 'beta',
       );
     } catch (_) {
       return null;
     }
   }
 
-  /// Latest **stable** release — GitHub's /releases/latest excludes
-  /// pre-releases, so this is the toggle-off behaviour (unchanged from before).
-  Future<Map<String, dynamic>?> _latestStableRelease() async {
+  /// Read only published releases from the AnimePlex admin API.
+  /// Beta opt-in accepts stable and beta; stable users never receive beta.
+  Future<Map<String, dynamic>?> _latestAdminRelease({required bool beta}) async {
     final res = await _dio.get<Map<String, dynamic>>(
-      _latestUrl,
-      options: Options(
-        headers: const {'Accept': 'application/vnd.github+json'},
-        receiveTimeout: const Duration(seconds: 12),
-        sendTimeout: const Duration(seconds: 12),
-      ),
-    );
-    return res.data;
-  }
-
-  /// Newest release **including pre-releases** — the toggle-on behaviour.
-  /// Scans the recent releases list and returns the highest version by
-  /// [compareVersions]; skips drafts.
-  Future<Map<String, dynamic>?> _newestBetaRelease() async {
-    final res = await _dio.get<List<dynamic>>(
       _releasesUrl,
+      queryParameters: {'channel': beta ? 'beta' : 'stable'},
       options: Options(
-        headers: const {'Accept': 'application/vnd.github+json'},
         receiveTimeout: const Duration(seconds: 12),
         sendTimeout: const Duration(seconds: 12),
       ),
     );
-    final list = res.data;
-    if (list == null || list.isEmpty) return null;
+    final list = res.data?['releases'];
+    if (list is! List) return null;
     Map<String, dynamic>? best;
-    var bestVer = '';
     for (final item in list) {
       if (item is! Map) continue;
-      final m = item.cast<String, dynamic>();
-      if (m['draft'] == true) continue;
-      final tag = ((m['tag_name'] as String?) ?? '').trim();
-      if (tag.isEmpty) continue;
-      final v = tag.startsWith('v') ? tag.substring(1) : tag;
-      if (best == null || compareVersions(v, bestVer) > 0) {
-        best = m;
-        bestVer = v;
+      final release = Map<String, dynamic>.from(item);
+      if (best == null ||
+          (release['version_code'] as num? ?? 0) >
+              (best['version_code'] as num? ?? 0)) {
+        best = release;
       }
     }
     return best;
@@ -153,7 +131,7 @@ class UpdateService {
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/zangetsu-update.apk';
+    final path = '${dir.path}/animeplex-update.apk';
     final file = File(path);
     if (await file.exists()) await file.delete(); // drop any stale partial
     await _dio.download(
