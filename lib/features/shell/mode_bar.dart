@@ -66,15 +66,17 @@ class ModeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
     return IgnorePointer(
       ignoring: !open,
       child: AnimatedSlide(
         offset: open ? Offset.zero : const Offset(0, 0.35),
-        duration: const Duration(milliseconds: 240),
+        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
         child: AnimatedOpacity(
           opacity: open ? 1 : 0,
-          duration: const Duration(milliseconds: 200),
+          duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             // Match the bottom dock's glass while this selector is visible.
@@ -104,6 +106,7 @@ class ModeBar extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -123,7 +126,11 @@ class _Choice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? AppColors.accent : AppColors.textSecondary;
-    return InkWell(
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
@@ -153,6 +160,7 @@ class _Choice extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -171,10 +179,15 @@ class ModeFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final reduceMotion = MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    return Semantics(
+      button: true,
+      label: open ? "Close content mode menu" : "Open content mode menu",
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         width: 50,
         height: 50,
