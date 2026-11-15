@@ -106,7 +106,6 @@ class ModeBar extends StatelessWidget {
           ),
         ),
       ),
-      ),
     );
   }
 }
