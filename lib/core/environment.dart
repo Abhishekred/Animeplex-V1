@@ -12,15 +12,15 @@ class Environment {
   // build needs a different project (e.g. staging).
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co',
+    defaultValue: 'https://iwiujqjipotwvigvaaid.supabase.co',
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3aXVqcWppcG90d3ZpZ3ZhYWlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MTMxOTAsImV4cCI6MjEwOTk4OTE5MH0.LHZf7beEY3L6S6i9KtDPWmBliPDo2AN2YgvH9Fn7qz0',
   );
 
-  // Supabase issues auth tokens; all app cloud-data sync uses the VPS.
+  // Retained for legacy/rollback builds; current cloud sync uses Supabase Data API.
   static const String vpsSyncUrl = String.fromEnvironment(
     'VPS_SYNC_URL',
     defaultValue: 'https://sync.zangetsu.online',
