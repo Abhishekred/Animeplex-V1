@@ -264,7 +264,8 @@ class SourceCatalogueHomeContentState
       if (reset) _sections = null;
     });
     try {
-      final sections = await _repository.home(sourceId: sourceId);
+      final sections = await _repository.home(sourceId: sourceId)
+          .timeout(const Duration(seconds: 30));
       if (!mounted || generation != _generation) return;
       unawaited(Analytics.log('source_load', {
         'outcome': 'success',
