@@ -122,6 +122,7 @@ Future<void> main() async {
       try {
         await Firebase.initializeApp().timeout(const Duration(seconds: 8));
         Analytics.enabled = true;
+        unawaited(Analytics.startSession());
         // After initializeApp, and only if it worked — a build with no
         // google-services.json has no Firebase to report to.
         await CrashReports.enable();
