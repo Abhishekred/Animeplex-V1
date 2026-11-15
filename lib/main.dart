@@ -147,7 +147,7 @@ Future<void> main() async {
       // When the probe says offline, boot stays local-only; the retry loop,
       // resume sync, and lock-status cache cover the reconnect.
       final bootOffline = await probeBootOffline(
-        host: Uri.tryParse(Environment.vpsSyncUrl)?.host ?? '',
+        host: Uri.tryParse(Environment.supabaseUrl)?.host ?? '',
       );
       var supabaseOk = false;
       try {
