@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/analytics/analytics.dart';
+import '../../core/playback/source_health_store.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
@@ -267,6 +268,15 @@ class SourceCatalogueHomeContentState
       final sections = await _repository.home(sourceId: sourceId)
           .timeout(const Duration(seconds: 30));
       if (!mounted || generation != _generation) return;
+      final elapsed = DateTime.now().difference(startedAt);
+      if (sl.isRegistered<SourceHealthStore>()) {
+        unawaited(sl<SourceHealthStore>().record(
+          sourceId,
+          elapsed >= SourceHealthStore.slowThreshold
+              ? SourceOutcome.slow : SourceOutcome.ok,
+          responseMs: elapsed.inMilliseconds,
+        ));
+      }
       unawaited(Analytics.log('source_load', {
         'outcome': 'success',
         'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
@@ -279,6 +289,11 @@ class SourceCatalogueHomeContentState
       _notifySections(sections);
     } catch (_) {
       if (!mounted || generation != _generation) return;
+      if (sl.isRegistered<SourceHealthStore>()) {
+        unawaited(sl<SourceHealthStore>().record(
+          sourceId, SourceOutcome.error,
+        ));
+      }
       unawaited(Analytics.log('source_load', {
         'outcome': 'failure',
         'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
