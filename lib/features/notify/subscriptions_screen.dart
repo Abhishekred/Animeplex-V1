@@ -14,7 +14,6 @@ import '../../core/notify/subscription_checker.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/states.dart';
 import '../announce/announcement_sheet.dart';
 import '../detail/detail_screen.dart';
 import 'subscriptions_screen_tv.dart';
@@ -98,7 +97,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (sl<AppMode>().isTv) return const SubscriptionsScreenTv();
     final subs = _store.all();
     final announcements = _announcements.all();
-    final empty = subs.isEmpty && announcements.isEmpty;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
@@ -112,12 +110,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             ),
         ],
       ),
-      body: false && empty
-          ? EmptyState(
-              icon: Icons.notifications_none_rounded,
-              message: context.l10n.noNotificationsYet,
-            )
-          : ListView(
+      body: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 _header('Notification preferences'),
