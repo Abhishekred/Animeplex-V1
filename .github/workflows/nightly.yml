@@ -96,6 +96,28 @@ jobs:
           fi
           echo 'Unsigned APK verified.'
 
+      - name: Generate APK integrity and build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/apk/release/app-release-unsigned.apk
+          mkdir -p release-metadata
+          sha256sum "$apk" | tee release-metadata/SHA256SUMS.txt
+          bytes=$(stat -c '%s' "$apk")
+          digest=$(sha256sum "$apk" | cut -d ' ' -f 1)
+          printf 'version_ref=%s\\ncommit=%s\\nsha256=%s\\nsize_bytes=%s\\nsigned=false\\n' \\
+            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$digest" "$bytes" \\
+            > release-metadata/build-info.txt
+          test -s release-metadata/build-info.txt
+
+      - name: Upload release integrity metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimePlex-release-metadata
+          path: release-metadata/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
         with:
