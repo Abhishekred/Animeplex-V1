@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 bool watchPageMotionEnabled(BuildContext context) =>
     MediaQuery.orientationOf(context) == Orientation.portrait &&
-    !MediaQuery.disableAnimationsOf(context);
+    !MediaQuery.disableAnimationsOf(context) &&
+    !MediaQuery.accessibleNavigationOf(context);
 
 /// Pointer feedback observes the existing gesture; it never delays its action.
 class WatchPagePress extends StatefulWidget {

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "261995360033",
+    "project_id": "animeplex-7361c",
+    "storage_bucket": "animeplex-7361c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:261995360033:android:fe865bf992b6cc90481860",
+        "android_client_info": {
+          "package_name": "com.animeplex_v1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC52aX1QPOhvknaVr1mNO34Hz0fUXMED3k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

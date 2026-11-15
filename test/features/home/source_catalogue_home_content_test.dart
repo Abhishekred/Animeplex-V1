@@ -9,6 +9,7 @@ import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
@@ -83,6 +84,10 @@ class _NotifyingStremioManager extends StremioManager {
   void changed() => notifyListeners();
 }
 
+class _NotifyingCloudStreamManager extends CloudStreamManager {
+  void changed() => notifyListeners();
+}
+
 class _TestCubit extends Cubit<int> {
   _TestCubit() : super(0);
 }
@@ -93,6 +98,40 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
   });
   tearDown(() => sl.reset());
+
+  testWidgets('Home loads a CloudStream source as soon as it becomes ready', (
+    tester,
+  ) async {
+    final manager = _NotifyingCloudStreamManager();
+    sl.registerSingleton<CloudStreamManager>(manager);
+    final sources = <({String id, String name})>[];
+    final repository = _StubSourceRepository(sources);
+    final selected = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SourceCatalogueHomeContent(
+              repository: repository,
+              showSourcePicker: false,
+              onSourceSelected: selected.add,
+              sectionBuilder: (section) => Text(section.title),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('No sources available'), findsNothing);
+    expect(find.byType(RowSkeleton), findsWidgets);
+
+    sources.add((id: 'cs:MovieBox', name: 'MovieBox'));
+    manager.changed();
+    await tester.pumpAndSettle();
+
+    expect(selected, ['cs:MovieBox']);
+    expect(find.text('cs:MovieBox catalogue'), findsOneWidget);
+    expect(repository.homeCalls.single.sourceId, 'cs:MovieBox');
+  });
 
   for (final hasSource in [true, false]) {
     testWidgets(

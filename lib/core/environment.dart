@@ -33,7 +33,7 @@ class Environment {
   static const String passwordResetUrl = 'https://zangetsu.online/';
 
   /// Base of the Zangetsu website (landing + reset + the share "open" page).
-  static const String siteBaseUrl = 'https://zangetsu.online';
+  static const String siteBaseUrl = 'https://abhixtinku.online';
 
   /// Share links point here. The page opens the app if installed (via the
   /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
@@ -47,7 +47,7 @@ class Environment {
 
   /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
   /// it (see [OpenLinkService] + the Android manifest intent-filter).
-  static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
+  static const String openLinkScheme = 'animeplex';
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';
 

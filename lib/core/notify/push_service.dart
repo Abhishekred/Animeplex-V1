@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../announce/announcement.dart';
 import '../di/injector.dart';
 import 'notification_service.dart';
+import 'notification_prefs.dart';
 
 /// Firebase Cloud Messaging — broadcast a custom notification to every user for
 /// free (FCM is $0 on all Firebase plans, unmetered).
@@ -33,6 +34,7 @@ class PushService {
   static final PushService instance = PushService._();
 
   bool _inited = false;
+  final Set<String> _foregroundMessageIds = <String>{};
 
   Future<void> init() async {
     if (_inited || !(Platform.isAndroid || Platform.isIOS)) return;
@@ -56,13 +58,24 @@ class PushService {
     // the in-app Notifications list) with it.
     try {
       await fm.subscribeToTopic('all');
+      if (NotificationPrefs.enabled(NotificationPrefs.updates)) {
+        await fm.subscribeToTopic('app_updates');
+      } else {
+        await fm.unsubscribeFromTopic('app_updates');
+      }
     } catch (_) {}
     // Foreground: draw it (FCM stays silent up front) + record it.
     FirebaseMessaging.onMessage.listen((m) {
+      // Ignore repeated delivery of the same FCM message in this session.
+      final messageId = m.messageId;
+      if (messageId != null && !_foregroundMessageIds.add(messageId)) return;
+      if (_foregroundMessageIds.length > 200) _foregroundMessageIds.clear();
+      if (m.data['type'] == 'app_update' &&
+          !NotificationPrefs.enabled(NotificationPrefs.updates)) return;
       final n = m.notification;
       if (n != null) {
         NotificationService.instance.showMessage(
-          id: m.hashCode & 0x7fffffff,
+          id: (m.messageId ?? m.hashCode.toString()).hashCode & 0x7fffffff,
           title: n.title ?? 'Zangetsu',
           body: n.body ?? '',
           imageUrl: n.android?.imageUrl,
@@ -76,9 +89,22 @@ class PushService {
     if (initial != null) _record(initial);
   }
 
+  Future<void> syncUpdatePreference() async {
+    if (!(Platform.isAndroid || Platform.isIOS)) return;
+    try {
+      if (NotificationPrefs.enabled(NotificationPrefs.updates)) {
+        await FirebaseMessaging.instance.subscribeToTopic('app_updates');
+      } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('app_updates');
+      }
+    } catch (_) {}
+  }
+
   /// Persist a received message to the in-app Notifications list. Idempotent
   /// (keyed by message id) so recording the same message twice is a no-op.
   void _record(RemoteMessage m) {
+    if (m.data['type'] == 'app_update' &&
+        !NotificationPrefs.enabled(NotificationPrefs.updates)) return;
     final n = m.notification;
     if (n == null || (n.title == null && n.body == null)) return;
     try {

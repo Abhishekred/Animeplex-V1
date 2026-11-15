@@ -1,7 +1,5 @@
-/// Single source of truth for the product name. Final rename = one
-/// find/replace on the token `WATCH_APP` across the repo, plus a bundle-id
-/// rename (`flutter pub run rename` or manual android/ios edits).
-const String kAppName = 'Zangetsu';
+/// User-facing product name.
+const String kAppName = 'AnimePlex';
 
 /// Running app version shown in Settings/About. Populated from the real build
 /// (PackageInfo) at boot so it never goes stale; this literal is just the
@@ -44,11 +42,11 @@ const String kLogIntakeUrl = 'https://zangetsu-logs.log-intake.workers.dev';
 const String kProfilePickerArtworkManifestUrl =
     'https://avatars.zangetsu.online/profile-picker/manifest.json';
 
-/// Developer announcements feed (a plain JSON file in the public app repo).
+/// Developer announcements feed, managed by the AnimePlex admin panel.
 /// The app READS this on launch to show in-app announcements — never writes.
-/// Edit + push that file to broadcast a message to every user.
+/// Publish or disable messages in the Admin Panel; no GitHub JSON edits needed.
 const String kAnnouncementsUrl =
-    'https://raw.githubusercontent.com/Spyou/Zangetsu/main/announcements.json';
+    'https://animeplex-admin-control.vercel.app/api/app/announcements';
 
 /// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,

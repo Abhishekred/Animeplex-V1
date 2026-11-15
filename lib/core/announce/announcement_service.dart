@@ -4,12 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_config.dart';
+import '../update/admin_remote_settings.dart';
 import 'announcement.dart';
 
-/// Fetches the developer announcements feed (a public JSON file in the app repo)
+/// Fetches the public announcements feed managed by AnimePlex Admin
 /// and records any not-yet-seen announcements that target the running version.
 ///
-/// Read-only and fail-safe: offline, GitHub down, or malformed JSON all resolve
+/// Read-only and fail-safe: offline, API unavailable, or malformed JSON all resolve
 /// to "nothing new" — it never throws and never blocks launch.
 class AnnouncementService {
   AnnouncementService(this._dio, this._store);
@@ -22,56 +23,54 @@ class AnnouncementService {
   /// the store. Returns `[]` on any error.
   Future<List<Announcement>> check() async {
     try {
+      await AdminRemoteSettings.instance.refresh();
+      if (!AdminRemoteSettings.instance.enabled('announcements_enabled')) return const [];
       final res = await _dio.get<String>(
         kAnnouncementsUrl,
         options: Options(
-          // raw.githubusercontent serves .json as text/plain, so take the raw
-          // body and decode it ourselves rather than trusting content-type.
+          // Decode the raw JSON body independently of the response content type.
           responseType: ResponseType.plain,
           receiveTimeout: const Duration(seconds: 12),
           sendTimeout: const Duration(seconds: 12),
         ),
       );
       final list = _extractList(res.data);
-      if (list.isEmpty) return const [];
+      if (list == null) return const [];
 
       final current = _normalize((await PackageInfo.fromPlatform()).version);
       final fresh = <Announcement>[];
-      var stamp = DateTime.now().millisecondsSinceEpoch;
+      final active = <Announcement>[];
       for (final raw in list) {
         if (raw is! Map) continue;
         final a = Announcement.fromJson(raw);
         if (a == null) continue;
-        if (_store.has(a.id)) continue; // already recorded on a prior run
-        await _store.saveNew(a, stamp);
-        stamp += 1; // keep insertion order stable for the history list
-        if (_targetsVersion(raw, current)) {
+        active.add(a);
+        if (!_store.has(a.id) && _targetsVersion(raw, current)) {
           fresh.add(a);
-        } else {
-          // Out of the target version window → keep it in history but don't pop
-          // it (and never pop it later, even after an app update).
-          await _store.markSeen(a.id);
         }
       }
+      // A valid empty feed means all admin announcements were unpublished
+      // or deleted. Never purge cached history on a network/parse failure.
+      await _store.syncAdminFeed(active);
       return fresh;
     } catch (_) {
       return const [];
     }
   }
 
-  List _extractList(String? body) {
-    if (body == null || body.trim().isEmpty) return const [];
+  List? _extractList(String? body) {
+    if (body == null || body.trim().isEmpty) return null;
     dynamic data;
     try {
       data = jsonDecode(body);
     } catch (_) {
-      return const [];
+      return null;
     }
     if (data is Map && data['announcements'] is List) {
       return data['announcements'] as List;
     }
     if (data is List) return data;
-    return const [];
+    return null;
   }
 
   /// A version-targeted announcement shows only when the running version is

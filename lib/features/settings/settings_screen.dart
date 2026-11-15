@@ -66,6 +66,7 @@ import '../../l10n/ui_strings.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/update/update_service.dart';
+import '../../core/update/admin_remote_settings.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -886,18 +887,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) setState(() {});
       },
     ),
-    if (!_isTv || !isAppleTv)
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.gamepad_outlined,
-        title: l10n.discord,
-        subtitle: l10n.discordSubtitle,
-        keywords: 'discord rich presence',
-        onTap: () async {
-          await _push(const DiscordSettingsScreen());
-          if (mounted) setState(() {});
-        },
-      ),
     if (WatchTogetherController.isEnabled)
       _SettingsEntry(
         section: SettingsSection.account,
@@ -959,14 +948,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
       },
-    ),
-    _SettingsEntry(
-      section: SettingsSection.account,
-      icon: Icons.cloud_sync_outlined,
-      title: l10n.backupAndRestore,
-      subtitle: l10n.backupAndRestoreSubtitle,
-      keywords: 'backup restore export import save cloud',
-      onTap: () => _push(const BackupScreen()),
     ),
     // Sources
     _SettingsEntry(

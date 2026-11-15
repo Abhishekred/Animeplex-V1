@@ -23,6 +23,9 @@ class ActiveSourceCubit extends Cubit<String> {
 
   final Box? _box;
 
+  /// The user's persisted selection, including one that loads after startup.
+  String? get savedSource => _box?.get(_key) as String?;
+
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {

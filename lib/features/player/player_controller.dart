@@ -13,6 +13,7 @@ import '../../core/platform/app_paths.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/analytics/analytics.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
@@ -291,6 +292,23 @@ class PlayerCubit extends Cubit<PlayerState> {
        _dio = dio,
        _activeCategory = category ?? 'sub',
        super(const PlayerState());
+
+  /// Report transitions once, without including stream URLs, titles or errors
+  /// that could contain personal information or expiring access tokens.
+  @override
+  void emit(PlayerState next) {
+    if (!isClosed) {
+      if (next.error != null && state.error != next.error) {
+        unawaited(Analytics.log('playback_failure', {
+          'phase': next.loadingSources ? 'resolution' : 'playback',
+        }));
+      } else if (next.active != null &&
+          state.active == null && next.error == null) {
+        unawaited(Analytics.log('playback_source_selected'));
+      }
+    }
+    super.emit(next);
+  }
 
   final String sourceId;
   // Mutable: switching Sub/Dub on a provider that separates the two by episode
@@ -2408,6 +2426,25 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
       if (gen != _gen || isClosed) return false;
     }
+    // Some providers deliver their Hindi mirrors a little after the first
+    // result. Check the current progressive session once before choosing a
+    // fallback; never re-scrape repeatedly or change a playing stream.
+    if (initialSource == null &&
+        pickHindiSource(resolved) == null &&
+        poll != null) {
+      try {
+        final extra = await poll(_episodeUrl(currentEpisode))
+            .timeout(const Duration(seconds: 3));
+        if (gen != _gen || isClosed) return false;
+        final seen = resolved.map((s) => s.url).toSet();
+        resolved = [
+          ...resolved,
+          ...extra.sources.where((s) => seen.add(s.url)),
+        ];
+      } catch (_) {
+        // Keep the original sources when the one refresh fails.
+      }
+    }
     emit(state.copyWith(sources: resolved, loadingSources: false));
     _buildQualityMenu(
       gen,
@@ -2438,6 +2475,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         : AudioKind.unknown;
     final pick =
         fromPick ??
+        pickHindiSource(resolved, preferQuality: _preferredQuality()) ??
         _preferredSource(resolved) ??
         pickDefault(
           resolved,

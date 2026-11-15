@@ -114,8 +114,37 @@ class RepoManager(private val context: Context) {
     fun cachedFiles(): List<File> =
         cs3Dir.listFiles()?.filter { it.isFile && it.extension == "cs3" } ?: emptyList()
 
+    /** Install the bundled MovieBox source once, including on an offline first launch.
+     * A later manual uninstall stays uninstalled; failed copies are retried next launch. */
+    fun ensureBundledMovieBox() {
+        val prefs = context.getSharedPreferences("animeplex_defaults", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("moviebox_installed_once", false)) return
+
+        val repoSuffix = "@${repoTag(DEFAULT_REPO_URL)}.cs3"
+        val alreadyInstalled = cachedFiles().any {
+            it.name.startsWith("MovieBoxProvider@") && it.name.endsWith(repoSuffix) && it.length() > 0
+        }
+        if (!alreadyInstalled) {
+            val target = File(cs3Dir, "MovieBoxProvider@41$repoSuffix")
+            val temporary = File(cs3Dir, "moviebox-preinstall.tmp")
+            try {
+                context.assets.open("preinstalled/MovieBoxProvider.cs3").use { input ->
+                    temporary.outputStream().use { output -> input.copyTo(output) }
+                }
+                check(temporary.length() > 0 && temporary.renameTo(target)) {
+                    "Could not install bundled MovieBoxProvider"
+                }
+            } finally {
+                temporary.delete()
+            }
+        }
+        prefs.edit().putBoolean("moviebox_installed_once", true).apply()
+    }
+
     companion object {
         const val UA = "Mozilla/5.0 (Android) Zangetsu"
+        const val DEFAULT_REPO_URL =
+            "https://raw.githubusercontent.com/Abhishekred/Stream-1/refs/heads/builds/repo.json"
 
         /** A short, stable per-repo tag derived from the REPOSITORY URL the user
          *  added (NOT the .cs3 file url) — exactly like CloudStream keys its

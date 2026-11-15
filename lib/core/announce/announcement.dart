@@ -115,6 +115,32 @@ class AnnouncementStore {
     await _box.put(a.id, {...a.toMap(), 'seen': false, 'receivedAt': receivedAt});
   }
 
+  /// Reconcile a successful complete admin feed with locally cached entries.
+  /// Preserve the seen/received order for existing items while refreshing text,
+  /// links and type. Only entries previously synchronized from the admin feed
+  /// are removed when unpublished or deleted.
+  Future<void> syncAdminFeed(List<Announcement> announcements) async {
+    final ids = <String>{};
+    var stamp = DateTime.now().millisecondsSinceEpoch;
+    for (final announcement in announcements) {
+      ids.add(announcement.id);
+      final previous = _box.get(announcement.id);
+      final old = previous is Map ? previous : null;
+      await _box.put(announcement.id, {
+        ...announcement.toMap(),
+        'seen': old?['seen'] == true,
+        'receivedAt': old?['receivedAt'] ?? stamp++,
+        'adminSynced': true,
+      });
+    }
+    for (final key in _box.keys.toList()) {
+      final raw = _box.get(key);
+      if (raw is Map && raw['adminSynced'] == true && !ids.contains(key.toString())) {
+        await _box.delete(key);
+      }
+    }
+  }
+
   Future<void> markSeen(String id) async {
     final raw = _box.get(id);
     if (raw is Map && raw['seen'] != true) {

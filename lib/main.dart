@@ -14,6 +14,8 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
+import 'core/update/mandatory_update_gate.dart';
+import 'core/remote/animeplex_remote_config.dart';
 import 'core/app_mode.dart';
 import 'core/boot_network.dart';
 import 'core/di/injector.dart';
@@ -120,6 +122,7 @@ Future<void> main() async {
       try {
         await Firebase.initializeApp().timeout(const Duration(seconds: 8));
         Analytics.enabled = true;
+        unawaited(Analytics.startSession());
         // After initializeApp, and only if it worked — a build with no
         // google-services.json has no Firebase to report to.
         await CrashReports.enable();
@@ -198,6 +201,8 @@ Future<void> main() async {
       // Dependency init happens inside the boot gate so the splash shows
       // immediately instead of a blank screen.
       runApp(WatchApp(bootOffline: bootOffline));
+      // Non-blocking admin configuration sync; never delays startup.
+      unawaited(AnimeplexRemoteConfig.instance.refreshAll());
     },
     (error, stack) {
       AppLogger.instance.logError(error, stack);
@@ -379,7 +384,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     _watchBoot(_boot);
   }
 
-  bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
   DateTime? _lastSubscriptionCheck;
 
@@ -588,30 +592,22 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         ),
       );
     }
-    if (isOnboarded()) {
-      // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
-      if (!isAppleTv) sl<HomeCubit>().load();
-      // CloudStream-style "new episode" check: once the app is up, re-fetch
-      // each subscribed show's episodes (JS or CS) and notify on any increase.
-      // Fire-and-forget + delayed so it doesn't compete with the splash/home.
-      Future.delayed(const Duration(seconds: 6), () async {
-        try {
-          await NotificationService.instance.init();
-          // Mirror CS subs to native + (re)schedule the background worker, then
-          // run the launch/resume sweep: JS sources here, CS via native worker.
-          await _checkSubscriptions(syncCloudStream: true);
-        } catch (_) {}
-      });
-    }
+    // The welcome tour is skipped for every install, including fresh installs.
+    // tvOS waits until provider JS has loaded before fetching Home.
+    if (!isAppleTv) sl<HomeCubit>().load();
+    Future.delayed(const Duration(seconds: 6), () async {
+      try {
+        await NotificationService.instance.init();
+        await _checkSubscriptions(syncCloudStream: true);
+      } catch (_) {}
+    });
     // FCM broadcasts: subscribe every device to the `all` topic so we can push
     // a custom notification to all users from the Firebase Console. Independent
     // of onboarding + fire-and-forget so it never delays launch.
     unawaited(PushService.instance.init());
     final elapsed = DateTime.now().difference(start);
-    // The intro animation is 1600ms, so anything past that is just dead
-    // waiting. Give it a hair over (1700) so the logo lands, then go — used
-    // to be 2000ms, which sat there doing nothing for ~400ms.
-    const minSplash = Duration(milliseconds: 1700);
+    // Keep the approved 2.4-second logo animation visible until it lands.
+    const minSplash = Duration(milliseconds: 2500);
     if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
   }
 
@@ -709,30 +705,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildShellHome() {
-    final onboarded = _onboardedOverride ?? isOnboarded();
-    return onboarded
-        ? ProfileLaunchGate(child: RootShell())
-        : OnboardingScreen(
-            onDone: () {
-              setState(() => _onboardedOverride = true);
-              if (isAppleTv) {
-                // The Navigator retains its initial _TvBootGate route. Its
-                // boolean is already true, so parent setState alone cannot
-                // replace the Onboarding child; notify the mounted gate again.
-                _tvShellGate
-                  ..value = false
-                  ..value = true;
-              } else {
-                rootNavigatorKey.currentState?.pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ProfileLaunchGate(child: RootShell()),
-                  ),
-                );
-              }
-            },
-          );
-  }
+  Widget _buildShellHome() => ProfileLaunchGate(child: RootShell());
 
   /// Swaps the splash route for the real shell (phone / Android TV only).
   void _pushShellRouteIfNeeded() {
@@ -818,7 +791,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               : (child ?? const SizedBox.shrink());
           final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
           return PosterCardScope(
-            child: isTv ? TvViewport(child: content) : content,
+            child: MandatoryUpdateGate(
+              child: isTv ? TvViewport(child: content) : content,
+            ),
           );
         },
       ),

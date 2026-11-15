@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:device_info_plus/device_info_plus.dart';
@@ -18,6 +20,8 @@ class UpdateInfo {
     required this.assetName,
     required this.apkSize,
     this.isPrerelease = false,
+    this.mandatory = false,
+    this.sha256 = '',
   });
 
   /// Normalised version, e.g. "1.3.0".
@@ -36,104 +40,110 @@ class UpdateInfo {
   /// download completed intact. 0 when unknown.
   final int apkSize;
 
-  /// True when the chosen release is a GitHub pre-release (beta).
+  /// True when the admin release belongs to the beta channel.
   final bool isPrerelease;
+  final bool mandatory;
+  final String sha256;
 }
 
-/// In-app updater: checks the public GitHub Releases of the app repo, compares
-/// the latest tag to the running build, downloads the matching APK and hands it
-/// to the Android package installer. The repo is public, so no token is needed.
+/// In-app updater: checks published releases from the AnimePlex admin API,
+/// compares versions, downloads the APK and opens the Android installer.
 class UpdateService {
-  static const String _repo = 'Spyou/Zangetsu';
-  static const String _latestUrl =
-      'https://api.github.com/repos/$_repo/releases/latest';
   static const String _releasesUrl =
-      'https://api.github.com/repos/$_repo/releases?per_page=10';
+      'https://animeplex-admin-control.vercel.app/api/app/releases';
   static const String _boxName = 'updates';
   static const String _skipKey = 'skippedVersion';
   static const String _betaKey = 'betaOptIn';
 
   final Dio _dio = Dio();
 
-  /// Query GitHub for the latest release. Returns an [UpdateInfo] when it is
+  /// Query the AnimePlex admin API. Returns an [UpdateInfo] when it is
   /// newer than the installed version (and, when [respectSkip] is true, not the
   /// version the user chose to skip). Returns null on no-update or any error —
   /// callers must treat null as "nothing to do" (never throws).
   Future<UpdateInfo?> checkForUpdate({bool respectSkip = false}) async {
     try {
       final beta = await betaOptIn();
-      final release =
-          beta ? await _newestBetaRelease() : await _latestStableRelease();
+      final release = await _latestAdminRelease(beta: beta);
       if (release == null) return null;
 
-      final rawTag = ((release['tag_name'] as String?) ?? '').trim();
-      if (rawTag.isEmpty) return null;
-      final version = rawTag.startsWith('v') ? rawTag.substring(1) : rawTag;
+      final version = ((release['version'] as String?) ?? '').trim();
+      if (version.isEmpty) return null;
 
       final pkg = await PackageInfo.fromPlatform();
-      if (compareVersions(version, pkg.version) <= 0) return null;
-      if (respectSkip && await _skippedVersion() == version) return null;
+      final installedCode = int.tryParse(pkg.buildNumber) ?? 0;
+      final remoteCode = (release['version_code'] as num?)?.toInt() ?? 0;
+      if (remoteCode > 0 && installedCode > 0) {
+        if (remoteCode <= installedCode) return null;
+      } else if (compareVersions(version, pkg.version) <= 0) return null;
+      if (respectSkip && await _skippedVersion() == version &&
+          release['mandatory'] != true) return null;
 
-      final apk = _pickApk(
-          (release['assets'] as List?) ?? const [], await _deviceAbis());
-      if (apk == null) return null;
-
+      final apkUrl = (release['download_url'] as String?) ?? '';
+      final uri = Uri.tryParse(apkUrl);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+      final apkSize = (release['file_size'] as num?)?.toInt() ?? 0;
+      final assetName = uri.pathSegments.isEmpty ? 'animeplex-update.apk' : uri.pathSegments.last;
       return UpdateInfo(
         version: version,
-        notes: ((release['body'] as String?) ?? '').trim(),
-        apkUrl: apk.$2,
-        assetName: apk.$1,
-        apkSize: apk.$3,
-        isPrerelease: release['prerelease'] == true,
+        notes: ((release['release_notes'] as String?) ?? '').trim(),
+        apkUrl: apkUrl,
+        assetName: assetName,
+        apkSize: apkSize,
+        isPrerelease: release['channel'] == 'beta',
+        mandatory: release['mandatory'] == true,
+        sha256: (release['sha256'] as String? ?? '').toLowerCase(),
       );
     } catch (_) {
       return null;
     }
   }
 
-  /// Latest **stable** release — GitHub's /releases/latest excludes
-  /// pre-releases, so this is the toggle-off behaviour (unchanged from before).
-  Future<Map<String, dynamic>?> _latestStableRelease() async {
+  /// Read only published releases from the AnimePlex admin API.
+  /// Beta opt-in accepts stable and beta; stable users never receive beta.
+  Future<Map<String, dynamic>?> _latestAdminRelease({required bool beta}) async {
     final res = await _dio.get<Map<String, dynamic>>(
-      _latestUrl,
-      options: Options(
-        headers: const {'Accept': 'application/vnd.github+json'},
-        receiveTimeout: const Duration(seconds: 12),
-        sendTimeout: const Duration(seconds: 12),
-      ),
-    );
-    return res.data;
-  }
-
-  /// Newest release **including pre-releases** — the toggle-on behaviour.
-  /// Scans the recent releases list and returns the highest version by
-  /// [compareVersions]; skips drafts.
-  Future<Map<String, dynamic>?> _newestBetaRelease() async {
-    final res = await _dio.get<List<dynamic>>(
       _releasesUrl,
+      queryParameters: {'channel': beta ? 'beta' : 'stable'},
       options: Options(
-        headers: const {'Accept': 'application/vnd.github+json'},
         receiveTimeout: const Duration(seconds: 12),
         sendTimeout: const Duration(seconds: 12),
       ),
     );
-    final list = res.data;
-    if (list == null || list.isEmpty) return null;
+    final list = res.data?['releases'];
+    if (list is! List) return null;
+    final pkg = await PackageInfo.fromPlatform();
+    final installedCode = int.tryParse(pkg.buildNumber) ?? 0;
+    final device = await _rolloutDeviceId();
     Map<String, dynamic>? best;
-    var bestVer = '';
     for (final item in list) {
       if (item is! Map) continue;
-      final m = item.cast<String, dynamic>();
-      if (m['draft'] == true) continue;
-      final tag = ((m['tag_name'] as String?) ?? '').trim();
-      if (tag.isEmpty) continue;
-      final v = tag.startsWith('v') ? tag.substring(1) : tag;
-      if (best == null || compareVersions(v, bestVer) > 0) {
-        best = m;
-        bestVer = v;
+      final release = Map<String, dynamic>.from(item);
+      final remoteCode = (release['version_code'] as num?)?.toInt() ?? 0;
+      if (remoteCode > 0 && installedCode > 0 && remoteCode <= installedCode) continue;
+      final rollout = ((release['rollout_percent'] as num?)?.toInt() ?? 100).clamp(0, 100);
+      if (release['mandatory'] != true && rollout < 100) {
+        final cohort = sha256.convert(utf8.encode('$device:${release['id']}')).bytes;
+        final bucket = ((cohort[0] << 8) | cohort[1]) % 100;
+        if (bucket >= rollout) continue;
+      }
+      if (best == null ||
+          (release['version_code'] as num? ?? 0) >
+              (best['version_code'] as num? ?? 0)) {
+        best = release;
       }
     }
     return best;
+  }
+
+  /// Stable per-install rollout cohort; no personal identifiers are sent.
+  Future<String> _rolloutDeviceId() async {
+    final box = await _box();
+    final existing = box.get('rolloutDeviceId');
+    if (existing is String && existing.isNotEmpty) return existing;
+    final id = '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(box)}';
+    await box.put('rolloutDeviceId', id);
+    return id;
   }
 
   /// The installed version string (e.g. "1.2.0"), for display.
@@ -150,10 +160,11 @@ class UpdateService {
   Future<File> downloadApk(
     String url, {
     int expectedSize = 0,
+    String expectedSha256 = '',
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/zangetsu-update.apk';
+    final path = '${dir.path}/animeplex-update.apk';
     final file = File(path);
     if (await file.exists()) await file.delete(); // drop any stale partial
     await _dio.download(
@@ -175,12 +186,21 @@ class UpdateService {
         );
       }
     }
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedSha256)) {
+      await file.delete();
+      throw const FormatException('Missing valid APK SHA-256 checksum');
+    }
+    final digest = await sha256.bind(file.openRead()).first;
+    if (digest.toString().toLowerCase() != expectedSha256.toLowerCase()) {
+      await file.delete();
+      throw const FormatException('APK checksum mismatch');
+    }
     return file;
   }
 
-  /// Hand the APK to the system installer. Requests the "install unknown apps"
-  /// permission first. Returns false if the permission was denied or the
-  /// installer couldn't be launched.
+  /// Hand the APK to the system installer. Requests the install permission first.
+  /// Returns false when denied or the installer cannot be launched.
+
   Future<bool> installApk(File apk) async {
     if (Platform.isAndroid) {
       final status = await Permission.requestInstallPackages.request();

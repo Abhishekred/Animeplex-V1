@@ -14,10 +14,8 @@ class AboutSettingsScreen extends StatefulWidget {
 }
 
 class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
-  static const String _websiteUrl = 'https://zangetsu.online';
-  static const String _telegramUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
-  static const String _discordUrl = kDiscordInviteUrl;
-  static const String _githubUrl = 'https://github.com/Spyou/Zangetsu';
+  static const String _defaultWebsiteUrl = 'https://animeplex-admin-control.vercel.app';
+  final AdminRemoteSettings _remote = AdminRemoteSettings.instance;
 
   final UpdateService _updateService = UpdateService();
   bool _betaUpdates = false;
@@ -25,6 +23,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _remote.refresh().then((_) { if (mounted) setState(() {}); });
     _updateService.betaOptIn().then((v) {
       if (mounted) setState(() => _betaUpdates = v);
     });
@@ -51,46 +50,21 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
         children: [
           const _ProfileCard(),
           const SizedBox(height: 24),
-          // Contributors — above Social, opens the full list.
-          SettingsCard(
-            children: [
-              SettingsTile(
-                autofocus: true,
-                icon: Icons.group_rounded,
-                title: context.l10n.contributors,
-                onTap: () => _push(const ContributorsScreen()),
-              ),
-            ],
-          ),
-          SettingsSectionLabel(context.l10n.social, muted: true),
-          SettingsCard(
-            children: [
-              SettingsTile(
-                icon: Icons.language_rounded,
-                title: context.l10n.website,
-                subtitle: 'zangetsu.online',
-                onTap: () => _open(_websiteUrl),
-              ),
-              SettingsTile(
-                icon: Icons.send_rounded,
-                title: context.l10n.telegram,
-                subtitle: context.l10n.communityChat,
-                onTap: () => _open(_telegramUrl),
-              ),
-              SettingsTile(
-                icon: Icons.discord,
-                title: context.l10n.discord,
-                subtitle: context.l10n.joinTheServer,
-                onTap: () => _open(_discordUrl),
-              ),
-              SettingsTile(
-                icon: Icons.code_rounded,
-                title: context.l10n.github,
-                subtitle: context.l10n.viewTheSourceCode,
-                onTap: () => _open(_githubUrl),
-              ),
-            ],
-          ),
+          if (_remote.enabled('about_website_visible')) ...[
+            SettingsSectionLabel(context.l10n.social, muted: true),
+            SettingsCard(
+              children: [
+                SettingsTile(
+                  icon: Icons.language_rounded,
+                  title: _remote.text('about_website_label', fallback: 'Website'),
+                  subtitle: _remote.text('about_website_subtitle', fallback: 'AnimePlex'),
+                  onTap: () => _open(_remote.text(
+                    'about_website_url', fallback: _defaultWebsiteUrl,
+                  )),
+                ),
+              ],
+            ),
+          ],
           SettingsSectionLabel(context.l10n.appSection, muted: true),
           SettingsCard(
             children: [
@@ -131,12 +105,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                     }
                   },
                 ),
-              ),
-              SettingsTile(
-                icon: Icons.favorite_border_rounded,
-                title: context.l10n.supportTheApp,
-                subtitle: context.l10n.buyMeACoffee,
-                onTap: () => _push(const DonateScreen()),
               ),
               if (sl.isRegistered<AppMode>() &&
                   sl<AppMode>().isTv &&
@@ -203,7 +171,7 @@ class _DeveloperRow extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () async {
-            final uri = Uri.parse('https://github.com/spyou');
+            final uri = Uri.parse('https://www.instagram.com/abhi._shek_07?xtok=dWx0eTVqd3VlZDZ5');
             if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
               await launchUrl(uri, mode: LaunchMode.platformDefault);
             }
@@ -218,8 +186,8 @@ class _DeveloperRow extends StatelessWidget {
             child: Row(
               children: [
                 const TeamAvatar(
-                  url: 'https://github.com/spyou.png?size=200',
-                  name: 'Spyou',
+                  url: 'https://abhixtinku.online/dev.png',
+                  name: 'Abhishek',
                   size: 46,
                 ),
                 const SizedBox(width: 14),
@@ -228,7 +196,7 @@ class _DeveloperRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Spyou',
+                        'Abhishek',
                         style: AppText.headline.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,

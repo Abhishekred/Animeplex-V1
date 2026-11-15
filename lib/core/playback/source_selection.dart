@@ -154,3 +154,32 @@ Future<List<VideoSource>> waitForPreferredQuality({
   }
   return collected;
 }
+
+/// Prefer a Hindi-audio *source* (not merely an embedded audio track).
+/// Provider labels such as "(Hindi Audio)" are common even when audioLang is
+/// omitted. Preserve the requested resolution only within Hindi candidates.
+VideoSource? pickHindiSource(
+  List<VideoSource> sources, {
+  String? preferQuality,
+}) {
+  final hindi = sources.where((source) {
+    final lang = (source.audioLang ?? '').trim().toLowerCase();
+    final label = (source.label ?? '').toLowerCase();
+    return lang == 'hi' ||
+        lang == 'hin' ||
+        lang == 'hindi' ||
+        RegExp(r'(^|[^a-z])hindi([^a-z]|$)').hasMatch(label);
+  }).toList();
+  if (hindi.isEmpty) return null;
+  final sorted = sortByQuality(hindi);
+  // Hindi takes priority over non-Hindi even when only lower resolutions
+  // exist. Within Hindi, honour an explicitly saved resolution.
+  final target = resolutionPx(preferQuality);
+  if (target == null) return sorted.first;
+  sorted.sort((a, b) {
+    final da = ((resolutionPx(a.quality) ?? -1) - target).abs();
+    final db = ((resolutionPx(b.quality) ?? -1) - target).abs();
+    return da.compareTo(db);
+  });
+  return sorted.first;
+}

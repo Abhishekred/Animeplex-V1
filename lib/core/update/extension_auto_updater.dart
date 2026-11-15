@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'admin_remote_settings.dart';
 
 import 'package:hive/hive.dart';
 
@@ -25,6 +26,8 @@ class ExtensionAutoUpdater {
   static const String _aniyomiReposBox = 'aniyomi_repos';
 
   static Future<int> run() async {
+    await AdminRemoteSettings.instance.refresh();
+    if (!AdminRemoteSettings.instance.enabled('extension_auto_updates_enabled')) return 0;
     var updated = 0;
     updated += await _updateZangetsu();
     // CloudStream + Aniyomi are Android-only; their managers aren't registered

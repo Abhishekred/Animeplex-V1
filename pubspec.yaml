@@ -274,6 +274,7 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
+    - assets/cloudstream/stream1_plugins.json
     - assets/licenses/adaptive_palette.txt
     - assets/licenses/discord_social_sdk.txt
     - assets/icons/lucide/

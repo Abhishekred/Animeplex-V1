@@ -948,16 +948,9 @@ class _DetailViewState extends State<_DetailView>
   /// Globe — open the source's web page in the system browser. Falls back to
   /// a snackbar when no usable URL can be derived.
   Future<void> _openSourceSite() async {
-    final url = _sourceWebUrl();
-    if (url == null) {
-      _snack(context.l10n.noWebPageForThisSource);
-      return;
-    }
-    final ok = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!ok && mounted) _snack(context.l10n.couldNotOpenSourceSite);
+    final uri = Uri.parse('https://www.instagram.com/animeplexofficial?psln=MTR3OWY4NjVqNGhheg==');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) _snack('Could not open Instagram');
   }
 
   /// Best-effort web URL for the title. Absolute item URLs (CloudStream/JS)
@@ -2898,9 +2891,9 @@ class _DetailViewState extends State<_DetailView>
                   onTap: () => _share(detail, sourceName),
                 ),
                 _IconAction(
-                  icon: Icons.public_rounded,
-                  label: context.l10n.web,
-                  tooltip: context.l10n.openSourceSite,
+                  icon: Icons.camera_alt_outlined,
+                  label: 'Instagram',
+                  tooltip: 'AnimePlex official Instagram',
                   onTap: _openSourceSite,
                 ),
                 // Novel only — a manga chapter is images, not text, and

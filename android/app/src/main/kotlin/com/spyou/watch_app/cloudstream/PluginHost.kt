@@ -124,6 +124,7 @@ class PluginHost(private val context: Context) {
 
     init {
         INSTANCE = this
+        PhisherPopupGuard.suppress(context)
         // Plugins reach for the global app context via CloudStreamApp; set it
         // before any plugin loads so requiresResources/settings plugins work.
         com.lagradost.cloudstream3.CloudStreamApp.setContext(context)

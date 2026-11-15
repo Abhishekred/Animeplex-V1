@@ -15,6 +15,29 @@ class Analytics {
 
   static NavigatorObserver? _observer;
 
+  /// Explicit opt-in is not required for Firebase's standard app engagement
+  /// metrics, but this event gives the release team a stable daily session
+  /// marker without collecting account IDs, titles or watched URLs.
+  static Future<void> markDailyActive() async {
+    if (!enabled) return;
+    try {
+      await FirebaseAnalytics.instance.logEvent(name: 'daily_active');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[analytics] daily_active failed: $e');
+    }
+  }
+
+  /// Call once after Firebase is initialized; never block application startup.
+  static Future<void> startSession() async {
+    if (!enabled) return;
+    try {
+      await FirebaseAnalytics.instance.logAppOpen();
+      await markDailyActive();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[analytics] app_open failed: $e');
+    }
+  }
+
   /// NavigatorObserver that auto-logs a `screen_view` on every route push.
   ///
   /// Building the real observer touches `FirebaseAnalytics.instance`, which

@@ -11,9 +11,21 @@ void main() {
         title: 'One Piece',
         type: ProviderType.anime,
       );
-      expect(url, startsWith('https://zangetsu.online/open/'));
+      expect(url, startsWith('https://abhixtinku.online/open/'));
       expect(url, contains('s=cs%3AhiAnime'));
       expect(url, contains('One+Piece'));
+    });
+
+    test('parses AnimePlex HTTPS and custom title links', () {
+      final link = ShareLink.watchUrl(
+        sourceId: 'cs:hiAnime',
+        url: 'https://example.com/watch',
+        title: 'Test',
+        type: ProviderType.anime,
+      )!;
+      expect(ShareLink.parse(Uri.parse(link))?.title, 'Test');
+      expect(ShareLink.parse(Uri.parse(link.replaceFirst('https://abhixtinku.online/open/', 'animeplex://open'))) ?.title, 'Test');
+      expect(ShareLink.parse(Uri.parse(link.replaceFirst('https://abhixtinku.online/open/', 'zangetsu://open'))), isNull);
     });
 
     test('null when the title identity is incomplete', () {

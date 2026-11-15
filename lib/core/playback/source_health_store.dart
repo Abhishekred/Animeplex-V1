@@ -133,16 +133,16 @@ class SourceHealthStore extends ChangeNotifier {
   /// is the measured round-trip when known (drives the "slow" classification and
   /// the response-time shown on the health screen).
   ///
-  /// Mapping: ok/empty → ok (empty is NOT a strike); slow → slow; timeout →
-  /// dead("timeout"); blocked → dead("blocked"); error → dead("error").
+  /// Mapping: ok/empty → ok; slow → slow; timeout/blocked → ok
+  /// (transient conditions must not blacklist a source); error → dead.
   Future<void> record(String id, SourceOutcome outcome, {int? responseMs}) async {
     final box = _box;
     if (box == null) return;
-    // Only a hard error is "dead" (and thus skippable in search). slow / timeout
-    // (just slow — e.g. Stremio's addon search) / Cloudflare-blocked / empty all
-    // mean the source is ALIVE, so they read as ok.
+    // Only hard errors can temporarily hide a source from search.
+    // Slow responses remain available, but visibly flagged in source health.
     final (status, reason) = switch (outcome) {
       SourceOutcome.error => (SourceHealth.dead, 'error'),
+      SourceOutcome.slow => (SourceHealth.slow, 'slow'),
       _ => (SourceHealth.ok, 'ok'),
     };
     await box.put(
