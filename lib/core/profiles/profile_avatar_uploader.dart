@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase, SupabaseClient, FileOptions;
 
 import '../app_config.dart';
+import '../environment.dart';
 import 'profile_avatar_reference.dart';
 
 /// Uploads a profile photo through the intake Worker (`cloudflare/log-intake/`,
@@ -59,6 +61,37 @@ class ProfileAvatarUploader {
         debugLabel: 'compress profile image',
       );
       if (avatar == null) return null;
+      // New backend: write directly to an owner-scoped Supabase Storage folder.
+      // Keep the legacy Worker path only for older/test flows without an
+      // initialized signed-in Supabase client.
+      SupabaseClient? cloud;
+      try {
+        cloud = Supabase.instance.client;
+      } catch (_) {
+        // The legacy uploader remains useful in isolated unit tests.
+      }
+      final uid = cloud?.auth.currentUser?.id;
+      if (cloud != null && uid != null) {
+        try {
+          final ext = switch (avatar.contentType) {
+            'image/gif' => 'gif',
+            'image/png' => 'png',
+            _ => 'jpg',
+          };
+          final name =
+              '$uid/${DateTime.now().microsecondsSinceEpoch}-'
+              '${math.Random.secure().nextInt(1 << 32)}.$ext';
+          final bucket = cloud.storage.from('avatars');
+          await bucket.uploadBinary(
+            name,
+            avatar.bytes,
+            fileOptions: FileOptions(contentType: avatar.contentType),
+          );
+          return bucket.getPublicUrl(name);
+        } catch (_) {
+          return null;
+        }
+      }
       final res = await _dio.post<dynamic>(
         '$kLogIntakeUrl/v1/avatar-slot',
         data: Stream<List<int>>.fromIterable([avatar.bytes]),
@@ -80,6 +113,20 @@ class ProfileAvatarUploader {
 
   Future<bool> delete({required String url, required String token}) async {
     if (isKlipyAvatarReference(url) || isKlipyAvatarMediaUrl(url)) return true;
+    final prefix =
+        '${Environment.supabaseUrl}/storage/v1/object/public/avatars/';
+    if (url.startsWith(prefix)) {
+      try {
+        final cloud = Supabase.instance.client;
+        final uid = cloud.auth.currentUser?.id;
+        final path = Uri.decodeComponent(url.substring(prefix.length).split('?').first);
+        if (uid == null || !path.startsWith('$uid/')) return false;
+        await cloud.storage.from('avatars').remove([path]);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
     try {
       await _dio.delete<void>(
         '$kLogIntakeUrl/v1/avatar-slot',
