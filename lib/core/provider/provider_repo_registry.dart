@@ -206,6 +206,8 @@ class ProviderReposRegistry {
         options: Options(
           responseType: ResponseType.plain,
           headers: const {'Cache-Control': 'no-cache'},
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 12),
         ),
       );
       final body = response.data;
@@ -232,6 +234,8 @@ class ProviderReposRegistry {
       );
     } on FormatException catch (e) {
       throw ProviderRepoException('Manifest is not valid JSON: ${e.message}');
+    } on TypeError {
+      throw ProviderRepoException('Manifest fields are missing or invalid');
     }
   }
 
