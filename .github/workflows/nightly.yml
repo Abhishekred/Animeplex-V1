@@ -105,8 +105,8 @@ jobs:
           sha256sum "$apk" | tee release-metadata/SHA256SUMS.txt
           bytes=$(stat -c '%s' "$apk")
           digest=$(sha256sum "$apk" | cut -d ' ' -f 1)
-          printf 'version_ref=%s\\ncommit=%s\\nsha256=%s\\nsize_bytes=%s\\nsigned=false\\n' \\
-            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$digest" "$bytes" \\
+          printf 'version_ref=%s\ncommit=%s\nsha256=%s\nsize_bytes=%s\nsigned=false\n' \
+            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$digest" "$bytes" \
             > release-metadata/build-info.txt
           test -s release-metadata/build-info.txt
 
