@@ -13,6 +13,7 @@ import '../../core/platform/app_paths.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/analytics/analytics.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
@@ -291,6 +292,23 @@ class PlayerCubit extends Cubit<PlayerState> {
        _dio = dio,
        _activeCategory = category ?? 'sub',
        super(const PlayerState());
+
+  /// Report transitions once, without including stream URLs, titles or errors
+  /// that could contain personal information or expiring access tokens.
+  @override
+  void emit(PlayerState next) {
+    if (!isClosed) {
+      if (next.error != null && state.error != next.error) {
+        unawaited(Analytics.log('playback_failure', {
+          'phase': next.loadingSources ? 'resolution' : 'playback',
+        }));
+      } else if (next.active != null &&
+          state.active == null && next.error == null) {
+        unawaited(Analytics.log('playback_source_selected'));
+      }
+    }
+    super.emit(next);
+  }
 
   final String sourceId;
   // Mutable: switching Sub/Dub on a provider that separates the two by episode
