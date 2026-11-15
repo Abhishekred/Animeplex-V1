@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/analytics/analytics.dart';
 import '../../core/stremio/stremio_manager.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
@@ -256,6 +257,7 @@ class SourceCatalogueHomeContentState
       return;
     }
     final generation = ++_generation;
+    final startedAt = DateTime.now();
     setState(() {
       _loading = true;
       _failed = false;
@@ -264,6 +266,11 @@ class SourceCatalogueHomeContentState
     try {
       final sections = await _repository.home(sourceId: sourceId);
       if (!mounted || generation != _generation) return;
+      unawaited(Analytics.log('source_load', {
+        'outcome': 'success',
+        'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+        'section_count': sections.length,
+      }));
       setState(() {
         _sections = sections;
         _loading = false;
@@ -271,6 +278,10 @@ class SourceCatalogueHomeContentState
       _notifySections(sections);
     } catch (_) {
       if (!mounted || generation != _generation) return;
+      unawaited(Analytics.log('source_load', {
+        'outcome': 'failure',
+        'duration_ms': DateTime.now().difference(startedAt).inMilliseconds,
+      }));
       setState(() {
         _failed = true;
         _loading = false;
