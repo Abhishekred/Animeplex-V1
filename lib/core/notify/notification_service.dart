@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'notification_router.dart';
+import '../update/admin_remote_settings.dart';
 
 /// Thin wrapper over flutter_local_notifications.
 ///
@@ -99,6 +100,8 @@ class NotificationService {
     bool reading = false,
   }) async {
     if (!Platform.isAndroid) return;
+    await AdminRemoteSettings.instance.refresh();
+    if (!AdminRemoteSettings.instance.enabled(reading ? 'chapter_notifications_enabled' : 'episode_notifications_enabled')) return;
     if (!_inited) await init();
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -129,6 +132,8 @@ class NotificationService {
   /// buttons live on the Sources screen).
   Future<void> showSourceUpdates({required int count}) async {
     if (!Platform.isAndroid || count <= 0) return;
+    await AdminRemoteSettings.instance.refresh();
+    if (!AdminRemoteSettings.instance.enabled('source_update_notifications_enabled')) return;
     if (!_inited) await init();
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -180,7 +185,7 @@ class NotificationService {
       android: AndroidNotificationDetails(
         'announcements',
         'Announcements',
-        channelDescription: 'News and updates from Zangetsu',
+        channelDescription: 'News and updates from AnimePlex',
         importance: Importance.high,
         priority: Priority.high,
         styleInformation: style,
