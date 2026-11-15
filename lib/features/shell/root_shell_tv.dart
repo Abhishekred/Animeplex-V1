@@ -478,7 +478,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       semanticLabel: item.label,
       onTap: () => _onItemSelected(i),
       builder: (focused) => AnimatedContainer(
-        duration: MediaQuery.disableAnimationsOf(context)
+        duration: (MediaQuery.disableAnimationsOf(context) || MediaQuery.accessibleNavigationOf(context))
             ? Duration.zero
             : const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
@@ -494,7 +494,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
         child: AnimatedScale(
           scale: focused ? 1.06 : 1,
           alignment: Alignment.centerLeft,
-          duration: MediaQuery.disableAnimationsOf(context)
+          duration: (MediaQuery.disableAnimationsOf(context) || MediaQuery.accessibleNavigationOf(context))
               ? Duration.zero
               : const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
@@ -546,7 +546,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     ),
   );
 
-  Duration get _dockDuration => MediaQuery.disableAnimationsOf(context)
+  Duration get _dockDuration => (MediaQuery.disableAnimationsOf(context) || MediaQuery.accessibleNavigationOf(context))
       ? Duration.zero
       : const Duration(milliseconds: 360);
   Future<void> _confirmProfileSwitch() async {
