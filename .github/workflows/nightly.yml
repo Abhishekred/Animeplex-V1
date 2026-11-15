@@ -110,6 +110,26 @@ jobs:
             > release-metadata/build-info.txt
           test -s release-metadata/build-info.txt
 
+      - name: Publish build summary
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## AnimePlex unsigned APK'
+            echo ''
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Ref: \`$GITHUB_REF_NAME\`"
+            echo '- Signing: **unsigned** (sign separately before release)'
+            echo '- APK artifact: \`AnimePlex-unsigned-apk\`'
+            echo '- Integrity artifact: \`AnimePlex-release-metadata\`'
+            echo ''
+            echo '### SHA-256'
+            echo '\`\`\`text'
+            cat release-metadata/SHA256SUMS.txt
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload release integrity metadata
         uses: actions/upload-artifact@v4
         with:
