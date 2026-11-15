@@ -108,10 +108,17 @@
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
                 <data android:scheme="zangetsu" android:host="mangabaka-auth"/>
                 <!-- Shared-title deep link: zangetsu://open?d=…&t=… (see OpenLinkService). -->
-                <data android:scheme="zangetsu" android:host="open"/>
+
                 <data android:scheme="zangetsu" android:host="room"/>
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
+            </intent-filter>
+            <!-- AnimePlex custom title link; legacy Zangetsu open handler removed. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="animeplex" android:host="open"/>
             </intent-filter>
             <!-- Verified HTTPS links for shared AnimePlex titles. -->
             <intent-filter android:autoVerify="true">
