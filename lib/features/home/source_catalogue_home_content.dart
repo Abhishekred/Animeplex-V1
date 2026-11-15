@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/stremio/stremio_manager.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/home_section.dart';
@@ -97,6 +98,7 @@ class SourceCatalogueHomeContentState
   bool _openingItem = false;
   int _generation = 0;
   StremioManager? _stremioManager;
+  CloudStreamManager? _cloudStreamManager;
 
   ContentMode _modeFor(SourceCatalogueHomeContent widget) =>
       widget.mode ??
@@ -109,6 +111,10 @@ class SourceCatalogueHomeContentState
     super.initState();
     if (sl.isRegistered<StremioManager>()) {
       _stremioManager = sl<StremioManager>()..addListener(_onStremioChanged);
+    }
+    if (sl.isRegistered<CloudStreamManager>()) {
+      _cloudStreamManager = sl<CloudStreamManager>()
+        ..addListener(_onCloudStreamChanged);
     }
     widget.controller?._attach(_controllerOwner, refresh);
     _mode = _modeFor(widget);
@@ -143,6 +149,30 @@ class SourceCatalogueHomeContentState
     _failed = false;
     if (_sourceId != null) _load(reset: true);
     _notifySections(const []);
+  }
+
+  void _onCloudStreamChanged() {
+    if (!mounted) return;
+    final sources = _sourcesForMode();
+    if (listEquals(sources, _sources)) return;
+    _sources = sources;
+    final previousId = _sourceId;
+    _sourceId = _chooseSourceId(previousId);
+    if (_sourceId != previousId) {
+      _generation++;
+      _sections = null;
+      _failed = false;
+      _rememberSource();
+      _notifySections(const []);
+    }
+    if (_sourceId != null) {
+      _load(reset: _sourceId != previousId);
+    } else {
+      setState(() {
+        _loading = false;
+        _sections = null;
+      });
+    }
   }
 
   void _onStremioChanged() {
@@ -278,6 +308,7 @@ class SourceCatalogueHomeContentState
   void dispose() {
     widget.controller?._detach(_controllerOwner);
     _stremioManager?.removeListener(_onStremioChanged);
+    _cloudStreamManager?.removeListener(_onCloudStreamChanged);
     super.dispose();
   }
 
@@ -289,6 +320,10 @@ class SourceCatalogueHomeContentState
       children: [
         if (_sources.isEmpty && _sourceId == 'stremio')
           _stremioEmptyState()
+        else if (_sources.isEmpty && _cloudStreamManager != null)
+          Column(
+            children: [for (var i = 0; i < 3; i++) _shimmerRow()],
+          )
         else if (_sources.isEmpty)
           _emptyState(
             icon: Icons.extension_off_rounded,
