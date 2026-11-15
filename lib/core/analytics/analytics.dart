@@ -15,6 +15,16 @@ class Analytics {
 
   static NavigatorObserver? _observer;
 
+  /// Call once after Firebase is initialized; never block application startup.
+  static Future<void> startSession() async {
+    if (!enabled) return;
+    try {
+      await FirebaseAnalytics.instance.logAppOpen();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[analytics] app_open failed: $e');
+    }
+  }
+
   /// NavigatorObserver that auto-logs a `screen_view` on every route push.
   ///
   /// Building the real observer touches `FirebaseAnalytics.instance`, which
