@@ -66,6 +66,7 @@ import '../../l10n/ui_strings.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/update/update_service.dart';
+import '../../core/update/admin_remote_settings.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/app_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
