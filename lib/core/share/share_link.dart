@@ -3,7 +3,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 
 /// Encodes a [MediaItem] into a short shareable web link and decodes an incoming
-/// `zangetsu://open?…` deep link back into a [MediaItem].
+/// `animeplex://open?…` deep link back into a [MediaItem].
 ///
 /// The shared link is an HTTPS URL to the site's `/open/` page:
 ///   `https://…/Zangetsu-Site/open/?s=<source>&u=<url>&t=<title>&y=<a|m>&c=<cover>`
@@ -76,7 +76,7 @@ class ShareLink {
     final isAppLink = uri.scheme == 'https' &&
         uri.host == 'abhixtinku.online' &&
         (uri.path == '/open' || uri.path == '/open/');
-    final isDeepLink = uri.scheme == Environment.openLinkScheme &&
+    final isDeepLink = uri.scheme == 'animeplex' &&
         uri.host == Environment.openLinkHost;
     if (!isAppLink && !isDeepLink) {
       return null;
