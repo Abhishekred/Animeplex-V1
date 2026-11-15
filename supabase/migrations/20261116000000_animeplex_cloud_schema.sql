@@ -222,7 +222,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   perform pg_advisory_xact_lock(hashtext(new.user_key), 0);
   if not exists (
