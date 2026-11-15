@@ -14,7 +14,8 @@ class AboutSettingsScreen extends StatefulWidget {
 }
 
 class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
-  static const String _websiteUrl = 'https://zangetsu.online';
+  static const String _defaultWebsiteUrl = 'https://animeplex-admin-control.vercel.app';
+  final AdminRemoteSettings _remote = AdminRemoteSettings.instance;
 
   final UpdateService _updateService = UpdateService();
   bool _betaUpdates = false;
@@ -22,6 +23,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _remote.refresh().then((_) { if (mounted) setState(() {}); });
     _updateService.betaOptIn().then((v) {
       if (mounted) setState(() => _betaUpdates = v);
     });
@@ -48,17 +50,21 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
         children: [
           const _ProfileCard(),
           const SizedBox(height: 24),
-          SettingsSectionLabel(context.l10n.social, muted: true),
-          SettingsCard(
-            children: [
-              SettingsTile(
-                icon: Icons.language_rounded,
-                title: context.l10n.website,
-                subtitle: 'zangetsu.online',
-                onTap: () => _open(_websiteUrl),
-              ),
-            ],
-          ),
+          if (_remote.enabled('about_website_visible')) ...[
+            SettingsSectionLabel(context.l10n.social, muted: true),
+            SettingsCard(
+              children: [
+                SettingsTile(
+                  icon: Icons.language_rounded,
+                  title: _remote.text('about_website_label', fallback: 'Website'),
+                  subtitle: _remote.text('about_website_subtitle', fallback: 'AnimePlex'),
+                  onTap: () => _open(_remote.text(
+                    'about_website_url', fallback: _defaultWebsiteUrl,
+                  )),
+                ),
+              ],
+            ),
+          ],
           SettingsSectionLabel(context.l10n.appSection, muted: true),
           SettingsCard(
             children: [
