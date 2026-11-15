@@ -256,10 +256,6 @@ class _RootShellState extends State<RootShell>
   }
 
   void _onTabSelected(DockTab tab) {
-    if (tab == DockTab.sources) {
-      setState(() => _modeBarOpen = !_modeBarOpen);
-      return;
-    }
     if (tab == DockTab.profile) {
       final now = DateTime.now();
       final lastTap = _lastProfileTap;
@@ -444,11 +440,14 @@ class _RootShellState extends State<RootShell>
               // Slide the dock away only when a Settings section is open AND the
               // Profile tab is showing — every other tab keeps its dock.
               final hide = dockHiddenBySection.value && _tab == DockTab.profile;
-              final modesEnabled = true;
+              final modesEnabled =
+                  ZModePrefs.enabled &&
+                  !(HomeCataloguePrefs.stremioSelected &&
+                      sl<ContentModeCubit>().state == ContentMode.anime);
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (modesEnabled)
+                  if (modesEnabled && _navPrefs.style == NavBarStyle.dock)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: BlocBuilder<ContentModeCubit, ContentMode>(
@@ -518,7 +517,7 @@ class _RootShellState extends State<RootShell>
                           valueListenable: dockCollapsedByScroll,
                           builder: (context, collapsed, child) {
                             final tabs = _visibleTabs();
-                            if (_navPrefs.style == NavBarStyle.liquid && !tabs.contains(DockTab.sources)) {
+                            if (_navPrefs.style == NavBarStyle.liquid) {
                               return _LiquidNavDock(
                                 tabs: tabs,
                                 active: _tab,
@@ -543,7 +542,21 @@ class _RootShellState extends State<RootShell>
                               tabs: tabs,
                               active: _tab,
                               onSelected: _onTabSelected,
-                              centre: null,
+                              centre: modesEnabled
+                                  ? BlocBuilder<ContentModeCubit, ContentMode>(
+                                      bloc: sl<ContentModeCubit>(),
+                                      builder: (_, mode) => ModeFab(
+                                        open: _modeBarOpen,
+                                        icon: iconForMode(
+                                          mode,
+                                          ZModePrefs.streamKind,
+                                        ),
+                                        onTap: () => setState(
+                                          () => _modeBarOpen = !_modeBarOpen,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
                             );
                           },
                         ),
@@ -871,11 +884,9 @@ class _FloatingDock extends StatelessWidget {
         )
       : _DockItem(
           labelOpacity: labels,
-          label: t == DockTab.sources ? 'Anime' : t.localizedLabel(context),
-          glyph: t == DockTab.sources ? null : dockGlyphFor(t),
-          icon: t == DockTab.sources
-              ? (Icons.play_circle_outline_rounded, Icons.play_circle_rounded)
-              : _iconFor(t),
+          label: t.localizedLabel(context),
+          glyph: dockGlyphFor(t),
+          icon: _iconFor(t),
           selected: active == t,
           onTap: () => onSelected(t),
         );
