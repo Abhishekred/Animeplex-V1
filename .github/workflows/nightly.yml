@@ -2,7 +2,7 @@ name: AnimePlex unsigned APK
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main, 'codex/**', 'release/**']
   schedule:
     - cron: "30 8 * * *"
   workflow_dispatch:
@@ -49,6 +49,8 @@ jobs:
 
       - name: Check startup and default sources
         run: flutter test test/core/ui/splash_style_test.dart test/features/onboarding/animeplex_splash_test.dart test/core/provider/animeplex_default_repo_test.dart test/features/home/source_catalogue_home_content_test.dart
+      - name: Test Supabase cloud sync and profile data
+        run: flutter test test/core/playback/watch_history_supabase_test.dart test/core/playback/my_list_supabase_test.dart test/core/profiles/profile_local_store_test.dart
 
       - name: Prepare release configuration
         run: flutter build apk --release --config-only
