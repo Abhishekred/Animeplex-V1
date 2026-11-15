@@ -33,7 +33,7 @@ class Environment {
   static const String passwordResetUrl = 'https://zangetsu.online/';
 
   /// Base of the Zangetsu website (landing + reset + the share "open" page).
-  static const String siteBaseUrl = 'https://zangetsu.online';
+  static const String siteBaseUrl = 'https://abhixtinku.online';
 
   /// Share links point here. The page opens the app if installed (via the
   /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
