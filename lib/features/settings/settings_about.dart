@@ -15,7 +15,6 @@ class AboutSettingsScreen extends StatefulWidget {
 
 class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   static const String _websiteUrl = 'https://zangetsu.online';
-  static const String _githubUrl = 'https://github.com/Spyou/Zangetsu';
 
   final UpdateService _updateService = UpdateService();
   bool _betaUpdates = false;
@@ -49,17 +48,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
         children: [
           const _ProfileCard(),
           const SizedBox(height: 24),
-          // Contributors — above Social, opens the full list.
-          SettingsCard(
-            children: [
-              SettingsTile(
-                autofocus: true,
-                icon: Icons.group_rounded,
-                title: context.l10n.contributors,
-                onTap: () => _push(const ContributorsScreen()),
-              ),
-            ],
-          ),
           SettingsSectionLabel(context.l10n.social, muted: true),
           SettingsCard(
             children: [
@@ -68,12 +56,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                 title: context.l10n.website,
                 subtitle: 'zangetsu.online',
                 onTap: () => _open(_websiteUrl),
-              ),
-              SettingsTile(
-                icon: Icons.code_rounded,
-                title: context.l10n.github,
-                subtitle: context.l10n.viewTheSourceCode,
-                onTap: () => _open(_githubUrl),
               ),
             ],
           ),
@@ -117,12 +99,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                     }
                   },
                 ),
-              ),
-              SettingsTile(
-                icon: Icons.favorite_border_rounded,
-                title: context.l10n.supportTheApp,
-                subtitle: context.l10n.buyMeACoffee,
-                onTap: () => _push(const DonateScreen()),
               ),
               if (sl.isRegistered<AppMode>() &&
                   sl<AppMode>().isTv &&
@@ -189,7 +165,7 @@ class _DeveloperRow extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () async {
-            final uri = Uri.parse('https://github.com/spyou');
+            final uri = Uri.parse('https://www.instagram.com/abhi._shek_07?xtok=dWx0eTVqd3VlZDZ5');
             if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
               await launchUrl(uri, mode: LaunchMode.platformDefault);
             }
@@ -204,8 +180,8 @@ class _DeveloperRow extends StatelessWidget {
             child: Row(
               children: [
                 const TeamAvatar(
-                  url: 'https://github.com/spyou.png?size=200',
-                  name: 'Spyou',
+                  url: 'https://abhixtinku.online/dev.png',
+                  name: 'Abhishek',
                   size: 46,
                 ),
                 const SizedBox(width: 14),
@@ -214,7 +190,7 @@ class _DeveloperRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Spyou',
+                        'Abhishek',
                         style: AppText.headline.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
