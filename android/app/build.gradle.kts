@@ -63,7 +63,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spyou.watch_app"
+        applicationId = "com.animeplex_v1"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
