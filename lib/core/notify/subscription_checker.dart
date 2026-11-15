@@ -1,4 +1,5 @@
 import '../logging/app_logger.dart';
+import '../update/admin_remote_settings.dart';
 import '../repository/catalogue_repository.dart';
 import 'notification_service.dart';
 import 'subscription_store.dart';
@@ -28,11 +29,18 @@ class SubscriptionChecker {
     if (_running) return; // never overlap two sweeps
     _running = true;
     try {
+      await AdminRemoteSettings.instance.refresh();
       for (final sub in _store.all()) {
         // CS sources are handled by the native background worker (it can run
         // while the app is closed); skip them here to avoid double alerts.
         if (sub.sourceId.startsWith('cs:')) continue;
         try {
+          final setting = sub.isReading
+              ? 'chapter_notifications_enabled'
+              : 'episode_notifications_enabled';
+          // Keep the baseline in sync even when alerts are disabled, so
+          // re-enabling never floods the user with old episodes/chapters.
+          final alertsEnabled = AdminRemoteSettings.instance.enabled(setting);
           final eps = await _repo
               .episodes(sub.url, sourceId: sub.sourceId)
               .timeout(const Duration(seconds: 25));
@@ -41,7 +49,7 @@ class SubscriptionChecker {
           if (count > sub.lastCount) {
             // Don't alert on the very first sweep after a fresh subscribe
             // (lastCount seeded to 0) — only announce a genuine increase.
-            if (sub.lastCount > 0) {
+            if (sub.lastCount > 0 && alertsEnabled) {
               await NotificationService.instance.showNewEpisode(
                 id: sub.key.hashCode & 0x7fffffff,
                 title: sub.title,
