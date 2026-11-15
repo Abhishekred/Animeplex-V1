@@ -36,13 +36,12 @@ class UpdateInfo {
   /// download completed intact. 0 when unknown.
   final int apkSize;
 
-  /// True when the chosen release is a GitHub pre-release (beta).
+  /// True when the admin release belongs to the beta channel.
   final bool isPrerelease;
 }
 
-/// In-app updater: checks the public GitHub Releases of the app repo, compares
-/// the latest tag to the running build, downloads the matching APK and hands it
-/// to the Android package installer. The repo is public, so no token is needed.
+/// In-app updater: checks published releases from the AnimePlex admin API,
+/// compares versions, downloads the APK and opens the Android installer.
 class UpdateService {
   static const String _releasesUrl =
       'https://animeplex-admin-control.vercel.app/api/app/releases';
@@ -52,7 +51,7 @@ class UpdateService {
 
   final Dio _dio = Dio();
 
-  /// Query GitHub for the latest release. Returns an [UpdateInfo] when it is
+  /// Query the AnimePlex admin API. Returns an [UpdateInfo] when it is
   /// newer than the installed version (and, when [respectSkip] is true, not the
   /// version the user chose to skip). Returns null on no-update or any error —
   /// callers must treat null as "nothing to do" (never throws).
