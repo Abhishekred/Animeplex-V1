@@ -8,6 +8,8 @@ import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/notify/cs_notify.dart';
+import '../../core/notify/notification_prefs.dart';
+import '../../core/notify/push_service.dart';
 import '../../core/notify/subscription_checker.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/theme/app_colors.dart';
@@ -72,6 +74,22 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _setPreference(String kind, bool enabled) async {
+    await NotificationPrefs.setEnabled(kind, enabled);
+    if (kind == NotificationPrefs.updates) {
+      await PushService.instance.syncUpdatePreference();
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _preference(String kind, String title, String subtitle) =>
+      SwitchListTile(
+        title: Text(title, style: AppText.body),
+        subtitle: Text(subtitle, style: AppText.caption),
+        value: NotificationPrefs.enabled(kind),
+        onChanged: (value) => _setPreference(kind, value),
+      );
+
   String _sourceLabel(String sourceId) =>
       sourceId.startsWith('cs:') ? sourceId.substring(3) : sourceId;
 
@@ -94,7 +112,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             ),
         ],
       ),
-      body: empty
+      body: false && empty
           ? EmptyState(
               icon: Icons.notifications_none_rounded,
               message: context.l10n.noNotificationsYet,
@@ -102,6 +120,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
+                _header('Notification preferences'),
+                _preference(NotificationPrefs.episode, 'New episodes',
+                    'Alerts for subscribed anime'),
+                _preference(NotificationPrefs.chapter, 'New chapters',
+                    'Alerts for subscribed manga and novels'),
+                _preference(NotificationPrefs.updates, 'App updates',
+                    'Firebase notifications when a new APK is published'),
+                const Divider(),
                 if (announcements.isNotEmpty) ...[
                   _header(context.l10n.announcements),
                   for (final a in announcements) _announcementTile(a),
