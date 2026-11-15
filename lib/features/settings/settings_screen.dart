@@ -886,18 +886,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) setState(() {});
       },
     ),
-    if (!_isTv || !isAppleTv)
-      _SettingsEntry(
-        section: SettingsSection.account,
-        icon: Icons.gamepad_outlined,
-        title: l10n.discord,
-        subtitle: l10n.discordSubtitle,
-        keywords: 'discord rich presence',
-        onTap: () async {
-          await _push(const DiscordSettingsScreen());
-          if (mounted) setState(() {});
-        },
-      ),
     if (WatchTogetherController.isEnabled)
       _SettingsEntry(
         section: SettingsSection.account,
@@ -959,14 +947,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
       },
-    ),
-    _SettingsEntry(
-      section: SettingsSection.account,
-      icon: Icons.cloud_sync_outlined,
-      title: l10n.backupAndRestore,
-      subtitle: l10n.backupAndRestoreSubtitle,
-      keywords: 'backup restore export import save cloud',
-      onTap: () => _push(const BackupScreen()),
     ),
     // Sources
     _SettingsEntry(
