@@ -75,16 +75,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                       )
                     : const SizedBox.shrink(),
               ),
-            ListTile(
-              leading: const Icon(Icons.favorite_outline_rounded),
-              title: const Text('Donate'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(builder: (_) => const DonateScreen()),
-                );
-              },
-            ),
           ],
         ),
       ),
