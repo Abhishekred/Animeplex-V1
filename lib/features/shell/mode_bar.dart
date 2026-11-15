@@ -204,13 +204,14 @@ class ModeFab extends StatelessWidget {
         ),
         child: AnimatedRotation(
           turns: open ? 0.125 : 0,
-          duration: const Duration(milliseconds: 220),
+          duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
           child: Icon(
             open ? Icons.add_rounded : icon,
             color: Colors.black,
             size: 24,
           ),
         ),
+      ),
       ),
     );
   }
