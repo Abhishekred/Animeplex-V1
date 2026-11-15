@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'notification_router.dart';
+import 'notification_prefs.dart';
 import '../update/admin_remote_settings.dart';
 
 /// Thin wrapper over flutter_local_notifications.
@@ -100,6 +101,7 @@ class NotificationService {
     bool reading = false,
   }) async {
     if (!Platform.isAndroid) return;
+    if (!NotificationPrefs.enabled(reading ? NotificationPrefs.chapter : NotificationPrefs.episode)) return;
     await AdminRemoteSettings.instance.refresh();
     if (!AdminRemoteSettings.instance.enabled(reading ? 'chapter_notifications_enabled' : 'episode_notifications_enabled')) return;
     if (!_inited) await init();
