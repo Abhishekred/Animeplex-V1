@@ -186,9 +186,21 @@ class UpdateService {
         );
       }
     }
-    if (!RegExp(r'^[a-f0-9]{64} to the system installer. Requests the "install unknown apps"
-  /// permission first. Returns false if the permission was denied or the
-  /// installer couldn't be launched.
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedSha256)) {
+      await file.delete();
+      throw const FormatException('Missing valid APK SHA-256 checksum');
+    }
+    final digest = await sha256.bind(file.openRead()).first;
+    if (digest.toString().toLowerCase() != expectedSha256.toLowerCase()) {
+      await file.delete();
+      throw const FormatException('APK checksum mismatch');
+    }
+    return file;
+  }
+
+  /// Hand the APK to the system installer. Requests the install permission first.
+  /// Returns false when denied or the installer cannot be launched.
+
   Future<bool> installApk(File apk) async {
     if (Platform.isAndroid) {
       final status = await Permission.requestInstallPackages.request();
