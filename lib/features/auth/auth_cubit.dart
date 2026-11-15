@@ -400,8 +400,22 @@ class AuthCubit extends Cubit<AuthState> {
   Future<bool> signUp(String name, String email, String password) async {
     emit(state.copyWith(busy: true, error: () => null));
     try {
-      await _sb.client.auth.signUp(email: email, password: password, data: {'name': name});
-      final authUser = _sb.client.auth.currentUser;
+      final response = await _sb.client.auth.signUp(
+        email: email,
+        password: password,
+        data: {'name': name},
+      );
+      // New Supabase projects often require email confirmation. They return
+      // a user but no session: never pretend signup logged the user in.
+      if (response.session == null) {
+        emit(state.copyWith(
+          busy: false,
+          status: AuthStatus.unauthenticated,
+          error: () => 'Account created. Verify your email, then sign in.',
+        ));
+        return false;
+      }
+      final authUser = response.user ?? _sb.client.auth.currentUser;
       if (authUser == null) {
         emit(state.copyWith(busy: false, error: () => 'Sign up failed'));
         return false;
