@@ -35,45 +35,42 @@ class AnnouncementService {
         ),
       );
       final list = _extractList(res.data);
-      if (list.isEmpty) return const [];
+      if (list == null) return const [];
 
       final current = _normalize((await PackageInfo.fromPlatform()).version);
       final fresh = <Announcement>[];
-      var stamp = DateTime.now().millisecondsSinceEpoch;
+      final active = <Announcement>[];
       for (final raw in list) {
         if (raw is! Map) continue;
         final a = Announcement.fromJson(raw);
         if (a == null) continue;
-        if (_store.has(a.id)) continue; // already recorded on a prior run
-        await _store.saveNew(a, stamp);
-        stamp += 1; // keep insertion order stable for the history list
-        if (_targetsVersion(raw, current)) {
+        active.add(a);
+        if (!_store.has(a.id) && _targetsVersion(raw, current)) {
           fresh.add(a);
-        } else {
-          // Out of the target version window → keep it in history but don't pop
-          // it (and never pop it later, even after an app update).
-          await _store.markSeen(a.id);
         }
       }
+      // A valid empty feed means all admin announcements were unpublished
+      // or deleted. Never purge cached history on a network/parse failure.
+      await _store.syncAdminFeed(active);
       return fresh;
     } catch (_) {
       return const [];
     }
   }
 
-  List _extractList(String? body) {
-    if (body == null || body.trim().isEmpty) return const [];
+  List? _extractList(String? body) {
+    if (body == null || body.trim().isEmpty) return null;
     dynamic data;
     try {
       data = jsonDecode(body);
     } catch (_) {
-      return const [];
+      return null;
     }
     if (data is Map && data['announcements'] is List) {
       return data['announcements'] as List;
     }
     if (data is List) return data;
-    return const [];
+    return null;
   }
 
   /// A version-targeted announcement shows only when the running version is
