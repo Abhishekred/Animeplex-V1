@@ -42,7 +42,7 @@ class ShareLink {
 
   /// Human-facing share text: the title + the link.
   static String shareText(MediaItem item) =>
-      '${item.title}\n\nWatch on Zangetsu:\n${forItem(item)}';
+      '${item.title}\n\nWatch on AnimePlex:\n${forItem(item)}';
 
   /// "Open in Zangetsu" URL for the Discord Rich Presence button while
   /// watching: the same https share link, so a friend with the app lands on
@@ -73,8 +73,12 @@ class ShareLink {
   /// Parse a `zangetsu://open?s=…&u=…` deep link into a [MediaItem], or null
   /// when [uri] is not an open-link or is missing the source/url.
   static MediaItem? parse(Uri uri) {
-    if (uri.scheme != Environment.openLinkScheme ||
-        uri.host != Environment.openLinkHost) {
+    final isAppLink = uri.scheme == 'https' &&
+        uri.host == 'abhixtinku.online' &&
+        (uri.path == '/open' || uri.path == '/open/');
+    final isDeepLink = uri.scheme == Environment.openLinkScheme &&
+        uri.host == Environment.openLinkHost;
+    if (!isAppLink && !isDeepLink) {
       return null;
     }
     final q = uri.queryParameters;
