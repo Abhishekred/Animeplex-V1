@@ -2426,6 +2426,25 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
       if (gen != _gen || isClosed) return false;
     }
+    // Some providers deliver their Hindi mirrors a little after the first
+    // result. Check the current progressive session once before choosing a
+    // fallback; never re-scrape repeatedly or change a playing stream.
+    if (initialSource == null &&
+        pickHindiSource(resolved) == null &&
+        poll != null) {
+      try {
+        final extra = await poll(_episodeUrl(currentEpisode))
+            .timeout(const Duration(seconds: 3));
+        if (gen != _gen || isClosed) return false;
+        final seen = resolved.map((s) => s.url).toSet();
+        resolved = [
+          ...resolved,
+          ...extra.sources.where((s) => seen.add(s.url)),
+        ];
+      } catch (_) {
+        // Keep the original sources when the one refresh fails.
+      }
+    }
     emit(state.copyWith(sources: resolved, loadingSources: false));
     _buildQualityMenu(
       gen,
@@ -2457,6 +2476,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     final pick =
         fromPick ??
         _preferredSource(resolved) ??
+        pickHindiSource(resolved, preferQuality: _preferredQuality()) ??
         pickDefault(
           resolved,
           prefer: narrowTo,
