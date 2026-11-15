@@ -2475,8 +2475,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         : AudioKind.unknown;
     final pick =
         fromPick ??
-        _preferredSource(resolved) ??
         pickHindiSource(resolved, preferQuality: _preferredQuality()) ??
+        _preferredSource(resolved) ??
         pickDefault(
           resolved,
           prefer: narrowTo,
