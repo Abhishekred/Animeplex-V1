@@ -1,0 +1,72 @@
+name: AnimePlex selective upstream integration checks
+
+on:
+  push:
+    branches:
+      - test/upstream-player-stremio-reader-hindi-20261116
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-selective-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter-and-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ZANGETSU_NO_DISCORD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.7"
+          channel: stable
+          cache: true
+          pub-cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Check targeted Flutter regressions
+        run: |
+          flutter test \
+            test/core/stremio \
+            test/core/backup/backup_service_test.dart \
+            test/core/reading/reader_custom_filter_test.dart \
+            test/features/reader \
+            test/features/player/episode_player_route_test.dart \
+            test/features/player/mpv_engine_fallback_test.dart \
+            test/features/player/phone_engine_fallback_test.dart \
+            test/features/player/player_engine_fallback_test.dart \
+            test/features/sources/stremio_sources_screen_test.dart \
+            test/features/home/home_screen_tv_test.dart \
+            test/playback/source_selection_test.dart \
+            test/playback/player_engine_fallback_prefs_test.dart \
+            test/core/playback/watch_history_supabase_test.dart \
+            test/core/playback/my_list_supabase_test.dart
+
+      - name: Compile Android debug APK
+        run: flutter build apk --debug
+
+      - name: Test Android native player changes
+        shell: bash
+        run: |
+          cd android
+          ./gradlew --no-daemon :app:testDebugUnitTest \
+            --tests 'com.spyou.watch_app.PhonePlayerEngineFallbackTest' \
+            --tests 'com.spyou.watch_app.PhonePlayerTransitionTest' \
+            --tests 'com.spyou.watch_app.PhonePlayerSheetTest' \
+            --tests 'com.spyou.watch_app.SubtitleViewportTest' \
+            --tests 'com.spyou.watch_app.TvPlayerDecoderTest'
