@@ -57,6 +57,26 @@ jobs:
             test/core/playback/watch_history_supabase_test.dart \
             test/core/playback/my_list_supabase_test.dart
 
+      - name: Build unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --release --config-only
+          cd android
+          ./gradlew --no-daemon --console=plain :app:assembleRelease
+          cd ..
+          apk="build/app/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$apk"
+          unzip -tqq "$apk"
+
+      - name: Upload unsigned test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimePlex-test-unsigned-release
+          path: build/app/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Compile Android debug APK
         run: flutter build apk --debug
 
