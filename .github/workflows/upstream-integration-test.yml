@@ -67,6 +67,17 @@ jobs:
             test/features/auth/auth_screens_tv_test.dart \
             test/features/auth/reconnect_revalidate_test.dart
 
+      - name: Compile Android debug APK
+        run: flutter build apk --debug
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimePlex-test-installable-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Build unsigned release APK
         shell: bash
         run: |
@@ -86,9 +97,6 @@ jobs:
           path: build/app/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 7
-
-      - name: Compile Android debug APK
-        run: flutter build apk --debug
 
       - name: Test Android native player changes
         shell: bash
