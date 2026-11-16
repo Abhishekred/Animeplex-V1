@@ -398,90 +398,39 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<bool> signUp(String name, String email, String password) async {
-    if (state.busy) return false;
-    final accountName = name.trim();
-    final accountEmail = email.trim();
-    if (accountName.isEmpty || accountEmail.isEmpty) {
-      emit(state.copyWith(error: () => 'Enter your name and email'));
-      return false;
-    }
-
     emit(state.copyWith(busy: true, error: () => null));
     try {
       final response = await _sb.client.auth.signUp(
-        email: accountEmail,
+        email: email,
         password: password,
-        // The database trigger also copies this name into public.profiles.
-        // Never store a plaintext password in user metadata or profiles.
-        data: {'name': accountName},
+        data: {'name': name},
       );
-
-      // When Confirm email is disabled in Supabase, signUp normally signs in
-      // immediately. An explicit password sign-in covers clients that returned
-      // a user without adopting a session, and accounts just created before
-      // the project setting was changed.
-      var session = response.session;
-      if (session == null) {
-        try {
-          session = (await _sb.client.auth.signInWithPassword(
-            email: accountEmail,
-            password: password,
-          )).session;
-        } on AuthException catch (_) {
-          // The backend still requires verification (or rejected sign-in).
-        }
-      }
-
-      if (session == null ||
-          (response.user != null && session.user.id != response.user!.id)) {
+      // New Supabase projects often require email confirmation. They return
+      // a user but no session: never pretend signup logged the user in.
+      if (response.session == null) {
         emit(state.copyWith(
           busy: false,
           status: AuthStatus.unauthenticated,
-          error: () => 'Account created, but automatic sign-in is unavailable. '
-              'Contact support.',
+          error: () => 'Account created. Verify your email, then sign in.',
         ));
         return false;
       }
-
-      final authUser = session.user;
-
-      // This is a best-effort refresh: the auth.users trigger already saves
-      // the name in profiles, so a temporary profile API failure must not
-      // turn a successful signup + live session into a fake signup error.
-      try {
-        await _sb.client.from('profiles').upsert({
-          'id': authUser.id,
-          'display_name': accountName,
-        });
-      } catch (_) {/* profile exists via the database trigger */}
-
-      final u = AuthUser.fromSupabase(
-        authUser,
-        {'display_name': accountName},
-      );
+      final authUser = response.user ?? _sb.client.auth.currentUser;
+      if (authUser == null) {
+        emit(state.copyWith(busy: false, error: () => 'Sign up failed'));
+        return false;
+      }
+      await _sb.client.from('profiles').upsert({'id': authUser.id, 'display_name': name});
+      final u = AuthUser.fromSupabase(authUser, {'display_name': name});
       _writeCachedUser(u);
       emit(state.copyWith(
         status: AuthStatus.authenticated,
         user: () => u,
         avatarUrl: () => _avatarFromUser(u),
         busy: false,
-        needsReconnect: false,
-        error: () => null,
       ));
       return true;
     } on AuthException catch (e) {
-      // A user who already signed up while confirmation was enabled can
-      // return to this form after the setting is disabled and sign in with
-      // the same credentials, without creating a duplicate auth account.
-      if (e.message.toLowerCase().contains('already registered')) {
-        try {
-          await _sb.client.auth.signInWithPassword(
-            email: accountEmail,
-            password: password,
-          );
-          return await _emitFromCurrentUser();
-        } on AuthException catch (_) {/* show the signup error below */}
-      }
       emit(state.copyWith(busy: false, error: () => e.message));
       return false;
     } catch (_) {
