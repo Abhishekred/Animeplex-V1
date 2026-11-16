@@ -932,9 +932,6 @@ void main() {
         await tester.pumpWidget(const SizedBox());
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
-      // flutter_cache_manager schedules a 10-second fake-async cleanup
-      // after reading cached pages. Flush that timer after unmounting.
-      await tester.pump(const Duration(seconds: 11));
     }
 
     testWidgets('a chapter with no pages says so instead of going black', (

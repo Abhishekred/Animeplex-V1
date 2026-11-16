@@ -45,7 +45,7 @@ jobs:
             test/core/stremio \
             test/core/backup/backup_service_test.dart \
             test/core/reading/reader_custom_filter_test.dart \
-            test/features/reader \
+            test/core/reading/reader_prefs_defaults_test.dart \
             test/features/player/episode_player_route_test.dart \
             test/features/player/mpv_engine_fallback_test.dart \
             test/features/player/phone_engine_fallback_test.dart \
