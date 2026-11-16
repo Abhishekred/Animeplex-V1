@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 90
     env:
       ZANGETSU_NO_DISCORD: "1"
+      ANIMEPLEX_UNSIGNED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +68,9 @@ jobs:
             test/features/auth/auth_screens_tv_test.dart \
             test/features/auth/reconnect_revalidate_test.dart
 
-      - name: Compile Android debug APK
+      - name: Compile Android debug APK (side-by-side .vpstest package)
+        env:
+          ORG_GRADLE_PROJECT_vpsSyncTestBuild: "true"
         run: flutter build apk --debug
 
       - name: Upload installable debug APK
