@@ -2810,6 +2810,8 @@ void main() {
       expect(find.byTooltip('Turn translation off'), findsOneWidget);
 
       await disposeHarness(tester);
+      // Flush any queued translation/UI timers after removing the reader.
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('stopping a chapter keeps finished pages and can resume', (

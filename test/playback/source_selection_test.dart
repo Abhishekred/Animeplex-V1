@@ -150,6 +150,45 @@ void main() {
     });
   });
 
+  group('Hindi-first source selection', () {
+    final english = VideoSource(
+      url: 'https://x/en-4k',
+      quality: '2160p',
+      audioLang: 'en',
+      container: SourceContainer.hls,
+    );
+    final hindi720 = VideoSource(
+      url: 'https://x/hindi-720',
+      quality: '720p',
+      audioLang: 'hi',
+      container: SourceContainer.hls,
+    );
+    final hindi1080 = VideoSource(
+      url: 'https://x/hindi-1080',
+      quality: '1080p',
+      label: '1080p (Hindi Audio)',
+      container: SourceContainer.hls,
+    );
+
+    test('Hindi wins over higher-resolution English', () {
+      expect(pickHindiSource([english, hindi720])?.url, hindi720.url);
+    });
+
+    test('recognizes provider labels and honors requested Hindi quality', () {
+      expect(
+        pickHindiSource(
+          [english, hindi720, hindi1080],
+          preferQuality: '1080p',
+        )?.url,
+        hindi1080.url,
+      );
+    });
+
+    test('returns null when Hindi is absent so other audio can play', () {
+      expect(pickHindiSource([english]), isNull);
+    });
+  });
+
   group('resolutionPx', () {
     test('reads real resolutions and the usual shorthand', () {
       expect(resolutionPx('1080p'), 1080);
