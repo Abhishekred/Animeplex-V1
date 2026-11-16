@@ -57,6 +57,16 @@ jobs:
             test/core/playback/watch_history_supabase_test.dart \
             test/core/playback/my_list_supabase_test.dart
 
+      - name: Check auth routing and retained sessions
+        run: |
+          flutter test \
+            test/features/auth/auth_route_test.dart \
+            test/features/auth/auth_connection_screen_test.dart \
+            test/features/auth/session_storage_key_test.dart \
+            test/features/auth/retired_auth_test.dart \
+            test/features/auth/auth_screens_tv_test.dart \
+            test/features/auth/reconnect_revalidate_test.dart
+
       - name: Build unsigned release APK
         shell: bash
         run: |
