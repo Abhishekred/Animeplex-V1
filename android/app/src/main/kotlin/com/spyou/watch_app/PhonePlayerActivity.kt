@@ -211,6 +211,8 @@ class PhonePlayerActivity : Activity() {
     private var keepScreenOn = true
     private var subtitlePreference = ""
     private var subtitlePreferenceApplied = false
+    private var manualAudioSelection = false
+    private var preferredHindiAudioApplied = false
     private var pendingAddonSubtitleId: String? = null
     private var currentSourceFactory: DefaultMediaSourceFactory? = null
     private var playbackDiskCache: androidx.media3.datasource.cache.Cache? = null
@@ -486,6 +488,7 @@ class PhonePlayerActivity : Activity() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                preferHindiAudio(tracks)
                 val pending = pendingAddonSubtitleId
                 if (pending != null) {
                     for (group in tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }) {
@@ -1323,6 +1326,8 @@ class PhonePlayerActivity : Activity() {
         p.pause()
         playbackStarted = false
         subtitlePreferenceApplied = false
+        manualAudioSelection = false
+        preferredHindiAudioApplied = false
         pendingAddonSubtitleId = null
         currentUrl = url
         attemptedUrls.add(url)
@@ -1761,8 +1766,35 @@ class PhonePlayerActivity : Activity() {
             .showForPlayer()
     }
 
+    /** Auto-select Hindi embedded audio whenever available. User-chosen
+     * tracks always win, and a later manifest update can still reveal Hindi. */
+    private fun preferHindiAudio(tracks: Tracks) {
+        if (manualAudioSelection || preferredHindiAudioApplied) return
+        val p = player ?: return
+        for (group in tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }) {
+            for (index in 0 until group.length) {
+                if (!group.isTrackSupported(index)) continue
+                val format = group.getTrackFormat(index)
+                val language = (format.language ?: "").lowercase().replace('_', '-')
+                val label = (format.label ?: "").lowercase()
+                val hindi = language == "hi" || language == "hin" ||
+                    language == "hindi" || language.startsWith("hi-") ||
+                    Regex("\\bhindi\\b").containsMatchIn(label)
+                if (!hindi) continue
+                preferredHindiAudioApplied = true
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .addOverride(TrackSelectionOverride(group.mediaTrackGroup, index))
+                    .build()
+                return
+            }
+        }
+    }
+
     private fun selectAudioTrack(pick: TrackSelectionOverride?) {
         val p = player ?: return
+        manualAudioSelection = true
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)

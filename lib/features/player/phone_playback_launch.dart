@@ -1275,9 +1275,24 @@ class PhoneNativePlayer {
         ? _seedSource
         : null;
     if (seed != null) _seedUsed = true;
-    final sources = seed == null
+    var sources = seed == null
         ? await _resolveSources(ep)
         : <VideoSource>[seed];
+    if (seed == null && pickHindiSource(sources) == null && _pollSources != null) {
+      // Extension sources sometimes return Hindi mirrors only after polling.
+      // Do this once before falling back, without touching user-picked sources.
+      try {
+        final extra = await _pollSources!(
+          tvEpisodeUrl(ep.url, category),
+        ).timeout(const Duration(seconds: 3));
+        if (session != _sessionId || category != _category) return null;
+        final seen = sources.map((source) => source.url).toSet();
+        sources = [
+          ...sources,
+          ...extra.sources.where((source) => seen.add(source.url)),
+        ];
+      } catch (_) {/* Keep the original candidates on failed refresh. */}
+    }
     final prepared = _rememberEngineSources(
       index,
       await _prepareSources(sources),
@@ -1314,7 +1329,8 @@ class PhoneNativePlayer {
       );
       if (saved != null) return saved;
     }
-    return pickDefault(
+    return pickHindiSource(sources, preferQuality: _preferredQuality()) ??
+        pickDefault(
       sources,
       prefer: _category == 'dub' ? AudioKind.dub : AudioKind.sub,
       preferQuality: _preferredQuality(),
