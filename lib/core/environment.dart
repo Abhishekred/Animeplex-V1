@@ -2,6 +2,17 @@
 /// endpoint ship in every Appwrite client app. Auth uses email/password
 /// sessions; the server API key is never embedded here.
 class Environment {
+  // VPS auth is prepared, not activated: preserve the current Supabase login
+  // until its users, JWT grants and cloud data have a tested migration path.
+  static const bool enableRemoteAuthRouting = bool.fromEnvironment(
+    'ENABLE_REMOTE_AUTH_ROUTING',
+    defaultValue: false,
+  );
+
+  // The current owner project's existing Supabase Flutter persisted-session key.
+  static const String supabaseSessionStorageKey =
+      'sb-iwiujqjipotwvigvaaid-auth-token';
+
   static const String appwriteProjectId = '6a1ed44f0029b50bccde';
   static const String appwriteProjectName = 'Zangetsu';
   static const String appwritePublicEndpoint =

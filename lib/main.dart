@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
@@ -10,6 +11,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
@@ -23,6 +26,8 @@ import 'core/ui/splash_style.dart';
 import 'core/hive/safe_box.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
+import 'core/supabase/auth_route.dart';
+import 'features/auth/auth_connection_screen.dart';
 import 'core/logging/app_logger.dart';
 import 'core/logging/crash_reports.dart';
 import 'core/platform/apple_tv.dart';
@@ -64,6 +69,95 @@ import 'features/profiles/profile_launch_gate.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
 import 'features/watch_together/watch_together_controller.dart';
+
+AuthRoute _launchAuthRoute = AuthRoute.cloud;
+final _authConnectionPhase = ValueNotifier(AuthConnectionPhase.idle);
+bool _authConnectionVerified = false;
+bool _hadStoredAuthSession = false;
+String? _expectedAuthUserId;
+
+Future<AuthRouteDecision> _selectLaunchAuthRoute() async {
+  // Explicit build overrides are for staging and remain authoritative.
+  if (!Environment.enableRemoteAuthRouting ||
+      const bool.hasEnvironment('SUPABASE_URL')) {
+    return const AuthRouteDecision(AuthRoute.cloud, changed: false);
+  }
+  while (true) {
+    final client = http.Client();
+    try {
+      return await AuthRouteResolver(
+        preferences: await SharedPreferences.getInstance(),
+        client: client,
+      ).resolve();
+    } catch (_) {
+      // An unreadable routing cache must never silently select the old authority.
+      final retry = Completer<void>();
+      runApp(
+        MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Connection settings unavailable'),
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Connect to the internet and try again.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      if (!retry.isCompleted) retry.complete();
+                    },
+                    child: const Text('Try again'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await retry.future;
+    } finally {
+      client.close();
+    }
+  }
+}
+
+Future<bool> _verifyLaunchAuthConnection() async {
+  try {
+    final client = Supabase.instance.client;
+    if (_hadStoredAuthSession || client.auth.currentSession != null) {
+      if (client.auth.currentSession == null) return false;
+      final result = await client.auth.getUser().timeout(
+        const Duration(seconds: 5),
+      );
+      return result.user != null &&
+          (!_hadStoredAuthSession || result.user!.id == _expectedAuthUserId);
+    }
+    final httpClient = http.Client();
+    try {
+      final response = await httpClient
+          .send(
+            http.Request(
+                'GET',
+                Uri.parse('${_launchAuthRoute.url}/auth/v1/health'),
+              )
+              ..followRedirects = false
+              ..headers['apikey'] = _launchAuthRoute.anonKey,
+          )
+          .timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } finally {
+      httpClient.close();
+    }
+  } catch (_) {
+    return false;
+  }
+}
 
 Future<void> main() async {
   // Run inside a guarded zone so uncaught async errors land in the shareable
@@ -134,6 +228,7 @@ Future<void> main() async {
       // runner. Must run before Supabase: its default auth deep-link observer uses
       // app_links, which has no tvOS plugin (MissingPluginException).
       final appleTv = await resolveAppleTv();
+      final authRouteFuture = _selectLaunchAuthRoute();
       // Bounded + guarded like Firebase/MediaKit: on a dead/slow network the
       // session-restore inside initialize can HANG (a hang never throws, so a
       // try/catch alone wouldn't save us), and this runs BEFORE runApp — an
@@ -149,6 +244,31 @@ Future<void> main() async {
       final bootOffline = await probeBootOffline(
         host: Uri.tryParse(Environment.supabaseUrl)?.host ?? '',
       );
+      final authDecision = await authRouteFuture;
+      _launchAuthRoute = authDecision.route;
+      if (authDecision.changed) {
+        final storedSession = (await SharedPreferences.getInstance()).getString(
+          Environment.supabaseSessionStorageKey,
+        );
+        _hadStoredAuthSession = storedSession?.isNotEmpty ?? false;
+        if (_hadStoredAuthSession) {
+          try {
+            final stored = jsonDecode(storedSession!);
+            _expectedAuthUserId = stored['user']['id'] as String?;
+          } catch (_) {
+            /* A malformed saved session must not produce a success message. */
+          }
+        }
+        _authConnectionPhase.value = AuthConnectionPhase.preparing;
+        runApp(
+          MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            home: const AuthConnectionScreen(
+              phase: AuthConnectionPhase.preparing,
+            ),
+          ),
+        );
+      }
       var supabaseOk = false;
       try {
         // initialize() sets the singleton's client synchronously and only
@@ -156,14 +276,23 @@ Future<void> main() async {
         // client behind (registrations below dereference it), so even a
         // probed-offline boot runs it with a short fuse instead of skipping.
         await Supabase.initialize(
-          url: Environment.supabaseUrl,
-          anonKey: Environment.supabaseAnonKey,
-          // TV auth uses QR pairing, not OAuth redirect deep links.
-          authOptions: FlutterAuthClientOptions(detectSessionInUri: !appleTv),
+          url: _launchAuthRoute.url,
+          anonKey: _launchAuthRoute.anonKey,
+          // The old owner-project session stays accessible after a host switch.
+          authOptions: FlutterAuthClientOptions(
+            detectSessionInUri: !appleTv,
+            localStorage: SharedPreferencesLocalStorage(
+              persistSessionKey: Environment.supabaseSessionStorageKey,
+            ),
+          ),
         ).timeout(Duration(seconds: bootOffline ? 2 : 8));
         supabaseOk = true;
       } catch (e, st) {
         AppLogger.instance.logError(e, st);
+      }
+      if (authDecision.changed) {
+        _authConnectionVerified =
+            supabaseOk && await _verifyLaunchAuthConnection();
       }
       // Boot init failed (dead/slow network) → keep retrying in the background so
       // login + cloud sync self-heal when the network returns, no restart needed.
@@ -233,9 +362,14 @@ Future<void> _retrySupabaseInit() async {
     if (_supabaseReady()) break; // a prior attempt already set the client
     try {
       await Supabase.initialize(
-        url: Environment.supabaseUrl,
-        anonKey: Environment.supabaseAnonKey,
-        authOptions: FlutterAuthClientOptions(detectSessionInUri: !isAppleTv),
+        url: _launchAuthRoute.url,
+        anonKey: _launchAuthRoute.anonKey,
+        authOptions: FlutterAuthClientOptions(
+          detectSessionInUri: !isAppleTv,
+          localStorage: SharedPreferencesLocalStorage(
+            persistSessionKey: Environment.supabaseSessionStorageKey,
+          ),
+        ),
       ).timeout(const Duration(seconds: 8));
       break; // initialized
     } catch (_) {
@@ -302,6 +436,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         .then((_) {
           if (!mounted) return;
           setState(() => _bootReady = true);
+          if (_authConnectionPhase.value == AuthConnectionPhase.preparing) {
+            _authConnectionPhase.value = _authConnectionVerified
+                ? AuthConnectionPhase.ready
+                : AuthConnectionPhase.failed;
+          }
           if (isAppleTv) {
             // Never mount RootShell during pushReplacement on tvOS — building the
             // full shell synchronously wedged the isolate for seconds while the
@@ -330,6 +469,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         })
         .catchError((Object e, StackTrace st) {
           if (!mounted) return;
+          if (_authConnectionPhase.value == AuthConnectionPhase.preparing) {
+            _authConnectionPhase.value = AuthConnectionPhase.failed;
+          }
           setState(() {
             _bootFailed = true;
             _bootError = e;
@@ -791,8 +933,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               : (child ?? const SizedBox.shrink());
           final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
           return PosterCardScope(
-            child: MandatoryUpdateGate(
-              child: isTv ? TvViewport(child: content) : content,
+            child: AuthConnectionOverlay(
+              phase: _authConnectionPhase,
+              child: MandatoryUpdateGate(
+                child: isTv ? TvViewport(child: content) : content,
+              ),
             ),
           );
         },

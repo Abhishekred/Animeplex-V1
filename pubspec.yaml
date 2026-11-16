@@ -132,7 +132,6 @@ dependencies:
   # that media_kit plays natively — no iframe, no YouTube chrome (Netflix-style).
   youtube_explode_dart: ^3.1.0
   wakelock_plus: ^1.5.2
-  appwrite: ^26.1.0
   image_picker: ^1.2.2
   # Swipe-for-brightness gesture in the player (left half of the surface).
   screen_brightness: ^2.1.4
@@ -175,8 +174,9 @@ dependencies:
   fluttertoast: ^10.0.0
   dynamic_color: ^2.1.0
   local_auth: ^3.0.2
-dev_dependencies:
   http: ^1.6.0
+  shared_preferences: ^2.5.5
+dev_dependencies:
   video_player_platform_interface: ^6.9.0
   # Test-only: gives the EPUB tests a REAL XML parse, which catches what a
   # hand-rolled tag-balance check cannot (an unescaped '&', a bad attribute)
