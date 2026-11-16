@@ -41,6 +41,9 @@ val isNightly =
 
 // CI produces an unsigned release APK for manual signing in MT Manager.
 val unsignedBuild = System.getenv("ANIMEPLEX_UNSIGNED") == "1"
+// This separately installable CI test package intentionally has no Firebase
+// Android client registration; keep production Firebase untouched.
+val isVpsSyncTestBuild = providers.gradleProperty("vpsSyncTestBuild").orNull == "true"
 
 android {
     namespace = "com.spyou.watch_app"
@@ -154,8 +157,9 @@ android {
                 signingConfigs.getByName("debug")
             // Nightly ((isNightly)): own package so it never overwrites release.
             if (isNightly) applicationIdSuffix = ".nightly"
-            if (providers.gradleProperty("vpsSyncTestBuild").orNull == "true") {
+            if (isVpsSyncTestBuild) {
                 applicationIdSuffix = ".vpstest"
+                resValue("string", "app_name", "AnimePlex Test")
             }
         }
         // Profile is AOT like release but keeps the VM service, so it can
@@ -395,7 +399,7 @@ dependencies {
 // must not fail the Gradle build — same idea as falling back when
 // key.properties is absent. Drop the real file at android/app/google-services.json
 // (Firebase console → Project settings → Android app) to turn Firebase on.
-if (file("google-services.json").exists()) {
+if (file("google-services.json").exists() && !isVpsSyncTestBuild) {
     apply(plugin = "com.google.gms.google-services")
     // Crashlytics only makes sense with a Firebase project behind it, so it
     // rides the same condition — a fork without google-services.json still
