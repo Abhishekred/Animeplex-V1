@@ -65,7 +65,9 @@ class BackupService {
     bool forFile = false,
   }) async {
     final payload = build(bundles);
-    if (bundles.contains(BackupBundle.sources) && _stremio != null) {
+    // Stremio file exports are password-encrypted locally. Keep normal
+    // cloud backups working until Supabase has a matching remote seal API.
+    if (forFile && bundles.contains(BackupBundle.sources) && _stremio != null) {
       final envelope = await _stremio().encode(
         password: password,
         forFile: forFile,

@@ -65,6 +65,8 @@ import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_domain_overrides.dart';
 import '../stremio/stremio_manager.dart';
+import '../stremio/stremio_backup.dart';
+import '../stremio/stremio_remote.dart';
 import '../stremio/stremio_provider.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
@@ -853,6 +855,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       ),
       LibraryBackup(),
       SettingsBackup(),
+      stremio: () => sl<StremioBackup>(),
       authorize: () => (sl<ProfileLockStore>() as SyncedProfileLockStore)
           .requireBackupAccess(),
     ),
@@ -1119,6 +1122,24 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   await stremioManager.init();
   await stremioManager.ensureDefaultMetadata();
   sl.registerSingleton<StremioManager>(stremioManager);
+  // Upstream /stremio/v1 VPS API isn't hosted on the new Supabase.
+  // Register encrypted local-file backup only; do not start remote sync.
+  final stremioRemote = StremioRemote(
+    endpoint: Uri.parse(Environment.supabaseUrl),
+    accessToken: cloudAccessToken,
+    currentUserId: currentUserId,
+  );
+  sl.registerSingleton<StremioRemote>(
+    stremioRemote,
+    dispose: (remote) => remote.dispose(),
+  );
+  sl.registerSingleton<StremioBackup>(
+    StremioBackup(
+      manager: stremioManager,
+      remote: stremioRemote,
+      currentUserId: currentUserId,
+    ),
+  );
   sl.registerSingleton<StremioProvider>(StremioProvider(stremioManager));
 
   sl.registerSingleton<SourceRepository>(
