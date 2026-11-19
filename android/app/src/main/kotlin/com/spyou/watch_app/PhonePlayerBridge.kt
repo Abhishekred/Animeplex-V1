@@ -95,6 +95,8 @@ object PhonePlayerBridge {
             val i = Intent(activity, PhonePlayerActivity::class.java)
             i.putExtra(PhonePlayerIntent.EXTRA_AUTO_ENGINE_FALLBACK,
                 call.argument<Boolean>("autoPlayerFallback") ?: false)
+            i.putExtra(PhonePlayerIntent.EXTRA_ADMIN_CONTROLS_LOCKED,
+                call.argument<Boolean>("adminControlsLocked") ?: false)
             call.argument<Map<String, Any?>>("controlLayout")?.let {
                 i.putExtra(PhonePlayerIntent.EXTRA_CONTROLS, org.json.JSONObject(it).toString())
             }
