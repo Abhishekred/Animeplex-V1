@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "Os cartões aparecem suavemente ao rolar",
 	"animationStyle": "Estilo de animação",
 	"turnOffMaterialYouToPickAColourYourself": "Desligue o Material You para escolher uma cor manualmente",
-	"downloadsZangetsu": "Downloads › Zangetsu",
+	"downloadsZangetsu": "Downloads › AnimePlex",
 	"removableDrive": "Unidade removível",
 	"chooseFolder": "Escolher pasta…",
 	"resetToDefault": "Redefinir para o padrão",
@@ -1795,7 +1795,7 @@
 		}
 	},
 	"cloudBackupFailed": "O backup na nuvem falhou. Verifique se você está online — se continuar falhando, o armazenamento de backup na nuvem ainda pode não estar configurado.",
-	"savedToDownloadsZangetsu": "Salvo em Downloads › Zangetsu",
+	"savedToDownloadsZangetsu": "Salvo em Downloads › AnimePlex",
 	"restoreFailed": "Falha na restauração: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -3014,5 +3014,5 @@
 	"epubExportFailed": "Não foi possível salvar o EPUB",
 	"export": "Exportar",
 	"keepDownloadsPrivate": "Manter os downloads privados",
-	"keepDownloadsPrivateSubtitle": "Os novos downloads de vídeo ficam dentro do Zangetsu em vez da pasta Downloads. Eles são apagados quando você desinstala o Zangetsu. Capítulos e exportações não são afetados."
+	"keepDownloadsPrivateSubtitle": "Os novos downloads de vídeo ficam dentro do AnimePlex em vez da pasta Downloads. Eles são apagados quando você desinstala o AnimePlex. Capítulos e exportações não são afetados."
 }

@@ -1541,7 +1541,7 @@ class AppLocalizationsJa extends AppLocalizations {
       '自分で色を選ぶには Material You をオフ';
 
   @override
-  String get downloadsZangetsu => 'ダウンロード › 斬月';
+  String get downloadsZangetsu => 'ダウンロード › AnimePlex';
 
   @override
   String get removableDrive => 'リムーバブルドライブ';
@@ -3935,7 +3935,7 @@ class AppLocalizationsJa extends AppLocalizations {
       'クラウドバックアップに失敗しました。インターネット接続を確認してください。繰り返し失敗する場合は、クラウドバックアップストアがまだ設定されていない可能性があります。';
 
   @override
-  String get savedToDownloadsZangetsu => 'ダウンロードに保存済み › 斬月';
+  String get savedToDownloadsZangetsu => 'ダウンロードに保存済み › AnimePlex';
 
   @override
   String restoreFailed(String error) {
@@ -5428,7 +5428,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
+      'New video downloads stay inside AnimePlex instead of the Downloads folder. They are deleted when you uninstall AnimePlex. Chapters and exports are unaffected.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';

@@ -23,6 +23,9 @@ class DownloadService {
   static FlutterBackgroundService get instance => _service;
 
   static const String channelId = 'zangetsu_downloads';
+  // Legacy app-private root: keep background HLS journals and completion
+  // markers readable after upgrading. Public video output paths are controlled
+  // by DownloadManager._sharedDir (now AnimePlex), not this value.
   static const String sharedDir = 'Zangetsu';
   static const String resultsDirName = '.results';
 
@@ -42,7 +45,7 @@ class DownloadService {
           autoStartOnBoot: false,
           // Leave notificationChannelId null so the plugin creates + uses its own
           // default channel (it only auto-creates one when this is null).
-          initialNotificationTitle: 'Zangetsu',
+          initialNotificationTitle: 'AnimePlex',
           initialNotificationContent: 'Preparing downloads…',
           foregroundServiceTypes: [AndroidForegroundType.dataSync],
         ),

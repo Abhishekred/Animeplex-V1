@@ -1585,7 +1585,7 @@ class AppLocalizationsId extends AppLocalizations {
       'Matikan Material You untuk memilih warna sendiri';
 
   @override
-  String get downloadsZangetsu => 'Unduhan › Zangetsu';
+  String get downloadsZangetsu => 'Unduhan › AnimePlex';
 
   @override
   String get removableDrive => 'Drive yang bisa dilepas';
@@ -4031,7 +4031,7 @@ class AppLocalizationsId extends AppLocalizations {
       'Cadangan cloud gagal. Pastikan kamu online — kalau terus gagal, penyimpanan cadangan cloud mungkin belum disiapkan.';
 
   @override
-  String get savedToDownloadsZangetsu => 'Disimpan ke Unduhan › Zangetsu';
+  String get savedToDownloadsZangetsu => 'Disimpan ke Unduhan › AnimePlex';
 
   @override
   String restoreFailed(String error) {
@@ -5548,7 +5548,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'Unduhan video baru tetap di dalam Zangetsu, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot Zangetsu. Bab dan hasil ekspor tidak terpengaruh.';
+      'Unduhan video baru tetap di dalam AnimePlex, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot AnimePlex. Bab dan hasil ekspor tidak terpengaruh.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';

@@ -1531,7 +1531,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '关闭 Material You 后可自选颜色';
 
   @override
-  String get downloadsZangetsu => '下载 › 斩月';
+  String get downloadsZangetsu => '下载 › AnimePlex';
 
   @override
   String get removableDrive => '可移动存储';
@@ -3906,7 +3906,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '云备份失败。请检查您的网络连接是否正常——如果备份持续失败，则可能是云备份存储尚未设置完成。';
 
   @override
-  String get savedToDownloadsZangetsu => '已保存至下载 › 斩月';
+  String get savedToDownloadsZangetsu => '已保存至下载 › AnimePlex';
 
   @override
   String restoreFailed(String error) {
@@ -5386,7 +5386,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
+      'New video downloads stay inside AnimePlex instead of the Downloads folder. They are deleted when you uninstall AnimePlex. Chapters and exports are unaffected.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';
@@ -6924,7 +6924,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
       '關閉 Material You 後可自選顏色';
 
   @override
-  String get downloadsZangetsu => '下載 › 斬月';
+  String get downloadsZangetsu => '下載 › AnimePlex';
 
   @override
   String get removableDrive => '可移除磁碟';
@@ -9125,7 +9125,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
       '雲端備份失敗。請檢查您的網路連線是否正常—如果備份持續失敗，則可能是雲端備份儲存尚未設定完成。';
 
   @override
-  String get savedToDownloadsZangetsu => '已儲存至下載 › 斬月';
+  String get savedToDownloadsZangetsu => '已儲存至下載 › AnimePlex';
 
   @override
   String restoreFailed(String error) {

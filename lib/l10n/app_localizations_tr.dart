@@ -1589,7 +1589,7 @@ class AppLocalizationsTr extends AppLocalizations {
       'Kendi rengini seçmek için Material You\'u kapat';
 
   @override
-  String get downloadsZangetsu => 'İndirilenler › Zangetsu';
+  String get downloadsZangetsu => 'İndirilenler › AnimePlex';
 
   @override
   String get removableDrive => 'Çıkarılabilir sürücü';
@@ -4027,7 +4027,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get savedToDownloadsZangetsu =>
-      'İndirilenler › Zangetsu\'ya kaydedildi';
+      'İndirilenler › AnimePlex\'ya kaydedildi';
 
   @override
   String restoreFailed(String error) {
@@ -5543,7 +5543,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'Yeni video indirmeleri İndirilenler klasörü yerine Zangetsu içinde kalır. Zangetsu\'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez.';
+      'Yeni video indirmeleri İndirilenler klasörü yerine AnimePlex içinde kalır. AnimePlex\'yu kaldırdığında silinirler. Kitap bölümleri ve dışa aktarmalar etkilenmez.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';

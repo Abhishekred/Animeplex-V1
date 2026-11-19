@@ -508,7 +508,7 @@
 	"cardsFadeInAsYouScroll": "捲動時卡片淡入",
 	"animationStyle": "動畫風格",
 	"turnOffMaterialYouToPickAColourYourself": "關閉 Material You 後可自選顏色",
-	"downloadsZangetsu": "下載 › 斬月",
+	"downloadsZangetsu": "下載 › AnimePlex",
 	"removableDrive": "可移除磁碟",
 	"chooseFolder": "選擇資料夾…",
 	"resetToDefault": "恢復預設",
@@ -1722,7 +1722,7 @@
 		}
 	},
 	"cloudBackupFailed": "雲端備份失敗。請檢查您的網路連線是否正常—如果備份持續失敗，則可能是雲端備份儲存尚未設定完成。",
-	"savedToDownloadsZangetsu": "已儲存至下載 › 斬月",
+	"savedToDownloadsZangetsu": "已儲存至下載 › AnimePlex",
 	"restoreFailed": "恢復失敗： {error}",
 	"@restoreFailed": {
 		"placeholders": {

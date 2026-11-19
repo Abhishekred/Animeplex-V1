@@ -508,7 +508,7 @@
 	"cardsFadeInAsYouScroll": "スクロールに合わせてカードがフェードイン",
 	"animationStyle": "アニメーションのスタイル",
 	"turnOffMaterialYouToPickAColourYourself": "自分で色を選ぶには Material You をオフ",
-	"downloadsZangetsu": "ダウンロード › 斬月",
+	"downloadsZangetsu": "ダウンロード › AnimePlex",
 	"removableDrive": "リムーバブルドライブ",
 	"chooseFolder": "フォルダーを選択…",
 	"resetToDefault": "デフォルトに戻す",
@@ -1722,7 +1722,7 @@
 		}
 	},
 	"cloudBackupFailed": "クラウドバックアップに失敗しました。インターネット接続を確認してください。繰り返し失敗する場合は、クラウドバックアップストアがまだ設定されていない可能性があります。",
-	"savedToDownloadsZangetsu": "ダウンロードに保存済み › 斬月",
+	"savedToDownloadsZangetsu": "ダウンロードに保存済み › AnimePlex",
 	"restoreFailed": "復元に失敗しました: {error}",
 	"@restoreFailed": {
 		"placeholders": {

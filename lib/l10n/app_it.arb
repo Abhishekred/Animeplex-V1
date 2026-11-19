@@ -508,7 +508,7 @@
 	"cardsFadeInAsYouScroll": "Le card appaiono mentre scorri",
 	"animationStyle": "Stile di animazione",
 	"turnOffMaterialYouToPickAColourYourself": "Disattiva Material You per scegliere un colore tu",
-	"downloadsZangetsu": "Download › Zangetsu",
+	"downloadsZangetsu": "Download › AnimePlex",
 	"removableDrive": "Unità rimovibile",
 	"chooseFolder": "Scegli cartella…",
 	"resetToDefault": "Ripristina predefinito",
@@ -1722,7 +1722,7 @@
 		}
 	},
 	"cloudBackupFailed": "Il backup sul cloud non è riuscito. Verifica di essere online: se il problema persiste, l'archivio di backup sul cloud potrebbe non essere ancora configurato.",
-	"savedToDownloadsZangetsu": "Salvato in Download › Zangetsu",
+	"savedToDownloadsZangetsu": "Salvato in Download › AnimePlex",
 	"restoreFailed": "Ripristino non riuscito: {error}",
 	"@restoreFailed": {
 		"placeholders": {

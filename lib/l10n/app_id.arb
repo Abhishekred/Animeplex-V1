@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "Kartu memudar saat kamu menggulir",
 	"animationStyle": "Gaya animasi",
 	"turnOffMaterialYouToPickAColourYourself": "Matikan Material You untuk memilih warna sendiri",
-	"downloadsZangetsu": "Unduhan › Zangetsu",
+	"downloadsZangetsu": "Unduhan › AnimePlex",
 	"removableDrive": "Drive yang bisa dilepas",
 	"chooseFolder": "Pilih folder…",
 	"resetToDefault": "Atur ke bawaan",
@@ -1795,7 +1795,7 @@
 		}
 	},
 	"cloudBackupFailed": "Cadangan cloud gagal. Pastikan kamu online — kalau terus gagal, penyimpanan cadangan cloud mungkin belum disiapkan.",
-	"savedToDownloadsZangetsu": "Disimpan ke Unduhan › Zangetsu",
+	"savedToDownloadsZangetsu": "Disimpan ke Unduhan › AnimePlex",
 	"restoreFailed": "Pemulihan gagal: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -3014,5 +3014,5 @@
 	"epubExportFailed": "Tidak bisa menyimpan EPUB",
 	"export": "Ekspor",
 	"keepDownloadsPrivate": "Jaga unduhan tetap privat",
-	"keepDownloadsPrivateSubtitle": "Unduhan video baru tetap di dalam Zangetsu, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot Zangetsu. Bab dan hasil ekspor tidak terpengaruh."
+	"keepDownloadsPrivateSubtitle": "Unduhan video baru tetap di dalam AnimePlex, bukan di folder Unduhan. Unduhan itu dihapus saat kamu mencopot AnimePlex. Bab dan hasil ekspor tidak terpengaruh."
 }

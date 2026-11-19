@@ -589,7 +589,7 @@
 	"cardsFadeInAsYouScroll": "Cards fade in as you scroll",
 	"animationStyle": "Animation style",
 	"turnOffMaterialYouToPickAColourYourself": "Turn off Material You to pick a colour yourself",
-	"downloadsZangetsu": "Downloads › Zangetsu",
+	"downloadsZangetsu": "Downloads › AnimePlex",
 	"removableDrive": "Removable drive",
 	"chooseFolder": "Choose folder…",
 	"resetToDefault": "Reset to default",
@@ -1898,7 +1898,7 @@
 		}
 	},
 	"cloudBackupFailed": "Cloud backup failed. Check you're online — if it keeps failing, the cloud backup store may not be set up yet.",
-	"savedToDownloadsZangetsu": "Saved to Downloads › Zangetsu",
+	"savedToDownloadsZangetsu": "Saved to Downloads › AnimePlex",
 	"restoreFailed": "Restore failed: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -3118,7 +3118,7 @@
 	"epubExportFailed": "Couldn't save the EPUB",
 	"export": "Export",
 	"keepDownloadsPrivate": "Keep downloads private",
-	"keepDownloadsPrivateSubtitle": "New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.",
+	"keepDownloadsPrivateSubtitle": "New video downloads stay inside AnimePlex instead of the Downloads folder. They are deleted when you uninstall AnimePlex. Chapters and exports are unaffected.",
 	"mangaPageTranslationTitle": "Translate page",
 	"mangaTranslationSourceLanguage": "Source language",
 	"mangaTranslationTargetLanguage": "Target language",

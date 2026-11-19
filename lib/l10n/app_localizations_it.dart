@@ -1585,7 +1585,7 @@ class AppLocalizationsIt extends AppLocalizations {
       'Disattiva Material You per scegliere un colore tu';
 
   @override
-  String get downloadsZangetsu => 'Download › Zangetsu';
+  String get downloadsZangetsu => 'Download › AnimePlex';
 
   @override
   String get removableDrive => 'Unità rimovibile';
@@ -4038,7 +4038,7 @@ class AppLocalizationsIt extends AppLocalizations {
       'Il backup sul cloud non è riuscito. Verifica di essere online: se il problema persiste, l\'archivio di backup sul cloud potrebbe non essere ancora configurato.';
 
   @override
-  String get savedToDownloadsZangetsu => 'Salvato in Download › Zangetsu';
+  String get savedToDownloadsZangetsu => 'Salvato in Download › AnimePlex';
 
   @override
   String restoreFailed(String error) {
@@ -5561,7 +5561,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'New video downloads stay inside Zangetsu instead of the Downloads folder. They are deleted when you uninstall Zangetsu. Chapters and exports are unaffected.';
+      'New video downloads stay inside AnimePlex instead of the Downloads folder. They are deleted when you uninstall AnimePlex. Chapters and exports are unaffected.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';

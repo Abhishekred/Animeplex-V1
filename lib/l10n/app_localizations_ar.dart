@@ -1589,7 +1589,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'أوقف Material You لتختار اللون بنفسك';
 
   @override
-  String get downloadsZangetsu => 'التنزيلات › Zangetsu';
+  String get downloadsZangetsu => 'التنزيلات › AnimePlex';
 
   @override
   String get removableDrive => 'وحدة تخزين قابلة للإزالة';
@@ -4053,7 +4053,7 @@ class AppLocalizationsAr extends AppLocalizations {
       'فشل النسخ الاحتياطي في السحابة. تحقق من اتصالك — إن استمر الفشل، فقد لا يكون مخزن النسخ الاحتياطي في السحابة مُهيّأً بعد.';
 
   @override
-  String get savedToDownloadsZangetsu => 'حُفظ في التنزيلات › Zangetsu';
+  String get savedToDownloadsZangetsu => 'حُفظ في التنزيلات › AnimePlex';
 
   @override
   String restoreFailed(String error) {
@@ -5608,7 +5608,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get keepDownloadsPrivateSubtitle =>
-      'تبقى تنزيلات الفيديو الجديدة داخل Zangetsu بدل مجلد التنزيلات. وتُحذف عند إلغاء تثبيت Zangetsu. أما الفصول والملفات المصدَّرة فلا تتأثر.';
+      'تبقى تنزيلات الفيديو الجديدة داخل AnimePlex بدل مجلد التنزيلات. وتُحذف عند إلغاء تثبيت AnimePlex. أما الفصول والملفات المصدَّرة فلا تتأثر.';
 
   @override
   String get mangaPageTranslationTitle => 'Translate page';

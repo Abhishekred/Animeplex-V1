@@ -528,7 +528,7 @@
 	"cardsFadeInAsYouScroll": "تتلاشى البطاقات للداخل أثناء التمرير",
 	"animationStyle": "نمط الحركة",
 	"turnOffMaterialYouToPickAColourYourself": "أوقف Material You لتختار اللون بنفسك",
-	"downloadsZangetsu": "التنزيلات › Zangetsu",
+	"downloadsZangetsu": "التنزيلات › AnimePlex",
 	"removableDrive": "وحدة تخزين قابلة للإزالة",
 	"chooseFolder": "اختر مجلدًا…",
 	"resetToDefault": "إعادة التعيين إلى الافتراضي",
@@ -1795,7 +1795,7 @@
 		}
 	},
 	"cloudBackupFailed": "فشل النسخ الاحتياطي في السحابة. تحقق من اتصالك — إن استمر الفشل، فقد لا يكون مخزن النسخ الاحتياطي في السحابة مُهيّأً بعد.",
-	"savedToDownloadsZangetsu": "حُفظ في التنزيلات › Zangetsu",
+	"savedToDownloadsZangetsu": "حُفظ في التنزيلات › AnimePlex",
 	"restoreFailed": "فشلت الاستعادة: {error}",
 	"@restoreFailed": {
 		"placeholders": {
@@ -3014,5 +3014,5 @@
 	"epubExportFailed": "تعذّر حفظ ملف EPUB",
 	"export": "تصدير",
 	"keepDownloadsPrivate": "إبقاء التنزيلات خاصة",
-	"keepDownloadsPrivateSubtitle": "تبقى تنزيلات الفيديو الجديدة داخل Zangetsu بدل مجلد التنزيلات. وتُحذف عند إلغاء تثبيت Zangetsu. أما الفصول والملفات المصدَّرة فلا تتأثر."
+	"keepDownloadsPrivateSubtitle": "تبقى تنزيلات الفيديو الجديدة داخل AnimePlex بدل مجلد التنزيلات. وتُحذف عند إلغاء تثبيت AnimePlex. أما الفصول والملفات المصدَّرة فلا تتأثر."
 }
