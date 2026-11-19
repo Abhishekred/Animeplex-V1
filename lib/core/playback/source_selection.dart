@@ -53,8 +53,33 @@ int? resolutionPx(String? label) {
   return m != null ? int.tryParse(m.group(1)!) : null;
 }
 
-/// Best default source: highest quality of [prefer]; if none of that kind,
-/// highest quality overall. Null only when [sources] is empty.
+/// Rank an episode's *spoken audio* for automatic source selection:
+/// Hindi first, then explicitly labelled original audio, then other sources.
+/// Prefer structured audioLang when available, otherwise the provider's
+/// descriptive stream label (e.g. "MovieBox (Hindi Audio)").
+/// Don't confuse a Hindi subtitle-only label with Hindi spoken audio.
+int sourceAudioPriority(VideoSource source) {
+  final language = source.audioLang?.trim().toLowerCase().replaceAll('_', '-') ?? '';
+  if (RegExp(r'^(?:hi|hin|hindi)(?:-|$)').hasMatch(language)) return 0;
+  if (RegExp(r'^(?:original|orig|org)(?:-|$)').hasMatch(language)) return 1;
+
+  final label = (source.label ?? '').toLowerCase();
+  final hindi = RegExp(r'\b(?:hindi|hin)\b|हिंदी|हिन्दी');
+  final hindiSubOnly = RegExp(
+    r'\b(?:hindi|hin)\s+(?:sub|subs|subtitle|subtitles)\b',
+  );
+  if (hindi.hasMatch(label) && !hindiSubOnly.hasMatch(label)) return 0;
+  if (RegExp(r'\b(?:original|orig)\b|\borg\s+audio\b')
+      .hasMatch(label)) {
+    return 1;
+  }
+  return 2;
+}
+
+/// Best default source: Hindi audio first (when offered), otherwise Original
+/// audio, then remaining sources. Within that audio priority choose the highest
+/// quality of [prefer], or highest quality overall if that kind is absent.
+/// Null only when [sources] is empty.
 ///
 /// [preferQuality] is the user's saved resolution preference. When it names a
 /// real resolution the source closest to it wins, so a provider that ships one
@@ -69,7 +94,16 @@ VideoSource? pickDefault(
 }) {
   if (sources.isEmpty) return null;
   final preferred = sortByQuality(sourcesForKind(sources, prefer));
-  final pool = preferred.isNotEmpty ? preferred : sortByQuality(sources);
+  final candidates = preferred.isNotEmpty ? preferred : sortByQuality(sources);
+
+  // The default language wins before quality: a 1080p Portuguese link must
+  // not outrank a Hindi stream. Explicit manual source picks bypass this.
+  final priority = candidates
+      .map(sourceAudioPriority)
+      .reduce((a, b) => a < b ? a : b);
+  final pool = candidates
+      .where((source) => sourceAudioPriority(source) == priority)
+      .toList();
 
   final want = resolutionPx(preferQuality);
   if (want != null) {
