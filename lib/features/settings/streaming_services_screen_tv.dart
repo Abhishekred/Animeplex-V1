@@ -37,10 +37,30 @@ class _StreamingServicesScreenTvState extends State<StreamingServicesScreenTv> {
 
   late Future<List<StreamingService>> _future;
 
+  String _loadedRegion = '';
+
+  void _onRegionChanged() {
+    final current = StreamingPrefs.region;
+    if (!mounted || current == _loadedRegion) return;
+    _loadedRegion = current;
+    sl<StreamingProvidersService>().clearCache();
+    setState(() {
+      _future = sl<StreamingProvidersService>().list(current);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-    _future = sl<StreamingProvidersService>().list(StreamingPrefs.region);
+    _loadedRegion = StreamingPrefs.region;
+    _future = sl<StreamingProvidersService>().list(_loadedRegion);
+    StreamingPrefs.revision.addListener(_onRegionChanged);
+  }
+
+  @override
+  void dispose() {
+    StreamingPrefs.revision.removeListener(_onRegionChanged);
+    super.dispose();
   }
 
   Future<void> _open(StreamingService s) async {

@@ -47,6 +47,40 @@ void main() {
     expect(StreamingPrefs.region, 'GB');
   });
 
+  test('admin locks region even if viewer previously picked another country', () async {
+    await StreamingPrefs.setRegion('US');
+    await StreamingPrefs.applyAdminRegion(
+      enabled: true, regionCode: 'IN', allowCustomization: false,
+    );
+    expect(StreamingPrefs.region, 'IN');
+    expect(StreamingPrefs.regionLocked, isTrue);
+    await StreamingPrefs.setRegion('GB');
+    expect(StreamingPrefs.region, 'IN', reason: 'locked viewers cannot override');
+    await StreamingPrefs.applyAdminRegion(
+      enabled: false, regionCode: 'IN', allowCustomization: false,
+    );
+    expect(StreamingPrefs.region, 'US', reason: 'original personal region preserved');
+  });
+
+  test('admin region is default when viewer has not chosen a region', () async {
+    await StreamingPrefs.applyAdminRegion(
+      enabled: true, regionCode: 'JP', allowCustomization: true,
+    );
+    expect(StreamingPrefs.region, 'JP');
+    expect(StreamingPrefs.regionLocked, isFalse);
+    await StreamingPrefs.setRegion('KR');
+    expect(StreamingPrefs.region, 'KR');
+  });
+
+  test('admin region change emits revision when effective country changes', () async {
+    final before = StreamingPrefs.revision.value;
+    await StreamingPrefs.applyAdminRegion(
+      enabled: true, regionCode: 'CA', allowCustomization: false,
+    );
+    expect(StreamingPrefs.region, 'CA');
+    expect(StreamingPrefs.revision.value, greaterThan(before));
+  });
+
   test('reads before init() do not throw', () async {
     await Hive.close();
     expect(StreamingPrefs.region, 'IN');

@@ -59,12 +59,35 @@ class _StreamingServicesRowState extends State<StreamingServicesRow> {
 
   late Future<List<StreamingService>> _future;
 
+  String _loadedRegion = '';
+
+  Future<List<StreamingService>> _loadRegion() =>
+      sl.isRegistered<StreamingProvidersService>()
+          ? sl<StreamingProvidersService>().list(StreamingPrefs.region)
+          : Future.value(const []);
+
+  void _onRegionChanged() {
+    final current = StreamingPrefs.region;
+    if (!mounted || current == _loadedRegion) return;
+    _loadedRegion = current;
+    if (sl.isRegistered<StreamingProvidersService>()) {
+      sl<StreamingProvidersService>().clearCache();
+    }
+    setState(() => _future = _loadRegion());
+  }
+
   @override
   void initState() {
     super.initState();
-    _future = sl.isRegistered<StreamingProvidersService>()
-        ? sl<StreamingProvidersService>().list(StreamingPrefs.region)
-        : Future.value(const []);
+    _loadedRegion = StreamingPrefs.region;
+    _future = _loadRegion();
+    StreamingPrefs.revision.addListener(_onRegionChanged);
+  }
+
+  @override
+  void dispose() {
+    StreamingPrefs.revision.removeListener(_onRegionChanged);
+    super.dispose();
   }
 
   bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
