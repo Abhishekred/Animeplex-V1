@@ -109,7 +109,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
         children: [
           _preview(),
           if (_prefs.playerControlsLocked)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Text(
                 'This player layout is managed by AnimePlex Admin.',
