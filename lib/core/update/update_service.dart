@@ -8,6 +8,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'apk_parts.dart';
+
+export 'apk_parts.dart' show UpdatePart, MultipartUpdate;
+
 /// A newer release explicitly published from the AnimePlex Admin dashboard.
 class UpdateInfo {
   const UpdateInfo({
@@ -18,6 +22,7 @@ class UpdateInfo {
     required this.apkSize,
     this.isPrerelease = false,
     this.isMandatory = false,
+    this.parts = const <UpdatePart>[],
   });
 
   /// Normalised version, e.g. "1.3.0".
@@ -35,6 +40,9 @@ class UpdateInfo {
   /// Expected byte size entered by the admin, used to verify the
   /// download completed intact. 0 when unknown.
   final int apkSize;
+
+  /// Upload-only: download, verify and join these pieces before installation.
+  final List<UpdatePart> parts;
 
   /// True when the admin published this release on the beta channel.
   final bool isPrerelease;
@@ -146,7 +154,7 @@ class UpdateService {
       final skipped = respectSkip ? await _skippedVersion() : null;
 
       final releases = await _publicRows('animeplex_update_releases', {
-        'select': 'version,channel,release_notes,apk_url,apk_size,mandatory',
+        'select': 'version,channel,release_notes,apk_url,apk_size,mandatory,delivery_method,apk_parts',
         'status': 'eq.published',
         'order': 'published_at.desc',
         'limit': '100',
@@ -168,7 +176,13 @@ class UpdateService {
 
         final url = ((r['apk_url'] as String?) ?? '').trim();
         final apkSize = (r['apk_size'] as num?)?.toInt() ?? 0;
-        if (!validUpdatePackage(url, apkSize)) {
+        final method = (r['delivery_method'] as String?) ?? 'link';
+        final rawParts = r['apk_parts'];
+        final valid = method == 'upload'
+            ? rawParts is List<dynamic> &&
+                MultipartUpdate.validManifest(rawParts, apkSize)
+            : method == 'link' && validUpdatePackage(url, apkSize);
+        if (!valid) {
           invalidEligibleApks++;
           continue;
         }
@@ -180,21 +194,27 @@ class UpdateService {
       if (best == null) {
         if (invalidEligibleApks > 0) {
           lastCheckError =
-              'An admin-published update has an invalid APK link or size. '
-              'Use a direct HTTPS .apk URL and the real byte size (or 0).';
+              'Admin published an incomplete APK upload or an invalid '
+              'APK link/size. Please correct it in the Admin Panel.';
         }
         return null;
       }
 
-      final apkUrl = (best['apk_url'] as String).trim();
-      final uri = Uri.parse(apkUrl);
-      final asset = Uri.decodeComponent(uri.pathSegments.last);
+      final uploaded = best['delivery_method'] == 'upload';
+      final apkUrl = uploaded ? '' : (best['apk_url'] as String).trim();
+      final asset = uploaded
+          ? 'AnimePlex-' + bestVersion + '.apk'
+          : Uri.decodeComponent(Uri.parse(apkUrl).pathSegments.last);
+      final parts = uploaded
+          ? MultipartUpdate.parse(best['apk_parts'] as List<dynamic>)
+          : const <UpdatePart>[];
       return UpdateInfo(
         version: bestVersion,
         notes: ((best['release_notes'] as String?) ?? '').trim(),
         apkUrl: apkUrl,
         assetName: asset.isEmpty ? 'AnimePlex-update.apk' : asset,
         apkSize: (best['apk_size'] as num?)?.toInt() ?? 0,
+        parts: parts,
         isPrerelease: best['channel'] == 'beta',
         isMandatory: best['mandatory'] == true,
       );
@@ -224,19 +244,38 @@ class UpdateService {
   Future<File> downloadApk(
     String url, {
     int expectedSize = 0,
+    List<UpdatePart> parts = const <UpdatePart>[],
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/animeplex-update.apk';
     final file = File(path);
     if (await file.exists()) await file.delete(); // drop any stale partial
-    await _dio.download(
-      url,
-      path,
-      onReceiveProgress: (received, total) {
-        if (total > 0) onProgress?.call(received / total);
-      },
-    );
+    if (parts.isNotEmpty) {
+      try {
+        await MultipartUpdate.download(
+          dio: _dio,
+          parts: parts,
+          destination: file,
+          expectedSize: expectedSize,
+          onProgress: onProgress,
+        );
+      } catch (_) {
+        if (await file.exists()) await file.delete();
+        rethrow;
+      }
+    } else {
+      if (!validUpdatePackage(url, expectedSize)) {
+        throw const FormatException('Invalid direct APK download URL.');
+      }
+      await _dio.download(
+        url,
+        path,
+        onReceiveProgress: (received, total) {
+          if (total > 0) onProgress?.call(received / total);
+        },
+      );
+    }
     // Block HTML redirects, truncated downloads and fake "APK" payloads.
     // A valid APK is a ZIP package and must be meaningfully larger than 1 MB.
     final actual = await file.length();

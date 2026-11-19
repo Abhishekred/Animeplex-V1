@@ -41,4 +41,26 @@ void main() {
       );
     });
   });
+  test('multipart APK manifest validates sizes, ordering and safe paths', () {
+    const owner = '12345678-1234-1234-1234-123456789abc';
+    const build = '12345678-1234-1234-1234-123456789def';
+    final parts = [
+      {'path': 'releases/$owner/$build/part-001.bin',
+       'size': 32 * 1024 * 1024},
+      {'path': 'releases/$owner/$build/part-002.bin',
+       'size': 16000000},
+    ];
+    expect(
+      MultipartUpdate.validManifest(parts, 32 * 1024 * 1024 + 16000000),
+      isTrue,
+    );
+    expect(MultipartUpdate.validManifest(parts, 24), isFalse);
+    expect(
+      MultipartUpdate.validManifest([
+        {'path': 'releases/../../other/part-001.bin', 'size': 2000000},
+      ], 2000000),
+      isFalse,
+    );
+  });
+
 }

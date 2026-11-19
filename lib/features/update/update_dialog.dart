@@ -140,6 +140,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       final file = await widget.service.downloadApk(
         widget.info.apkUrl,
         expectedSize: widget.info.apkSize,
+        parts: widget.info.parts,
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
