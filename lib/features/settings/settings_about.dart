@@ -17,7 +17,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   static const String _websiteUrl = 'https://zangetsu.online';
   static const String _telegramUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
   static const String _discordUrl = kDiscordInviteUrl;
-  static const String _githubUrl = 'https://github.com/Spyou/Zangetsu';
 
   final UpdateService _updateService = UpdateService();
   bool _betaUpdates = false;
@@ -87,7 +86,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                 icon: Icons.code_rounded,
                 title: context.l10n.github,
                 subtitle: context.l10n.viewTheSourceCode,
-                onTap: () => _open(_githubUrl),
+                onTap: () async => _open(await _updateService.repositoryUrl()),
               ),
             ],
           ),

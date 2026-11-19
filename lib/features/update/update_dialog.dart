@@ -15,9 +15,18 @@ Future<void> maybeShowUpdateDialog(
   bool manual = false,
 }) async {
   final service = UpdateService();
-  final info = await service.checkForUpdate(respectSkip: !manual);
+  final info = await service.checkForUpdate(
+    respectSkip: !manual,
+    automatic: !manual,
+  );
   if (!context.mounted) return;
   if (info == null) {
+    if (manual && service.lastCheckError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(service.lastCheckError!)),
+      );
+      return;
+    }
     if (manual) {
       final v = await service.currentVersion();
       if (!context.mounted) return;
@@ -237,7 +246,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 spacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (!_busy)
+                  if (!_busy && !widget.info.isMandatory)
                     TextButton(
                       onPressed: () async {
                         await widget.service.skipVersion(widget.info.version);
