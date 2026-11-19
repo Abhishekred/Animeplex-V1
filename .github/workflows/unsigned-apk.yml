@@ -1,0 +1,110 @@
+name: AnimePlex Unsigned APK
+
+on:
+  push:
+    branches:
+      - updated
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: animeplex-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ZANGETSU_NO_DISCORD: "1"
+      ZANGETSU_UNSIGNED_APK: "1"
+
+    steps:
+      - name: Checkout updated branch
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter and Pub cache
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.7"
+          channel: stable
+          cache: true
+
+      - name: Restore and save Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Fetch Flutter dependencies
+        run: flutter pub get
+
+      - name: Build unsigned release APK (ARM32 and ARM64)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Flutter's CLI may report an output-not-found error for unsigned
+          # APKs even when Gradle assembled app-release-unsigned.apk.
+          # Only accept that case if the actual unsigned APK exists.
+          set +e
+          flutter build apk --release --no-pub --target-platform android-arm,android-arm64
+          flutter_exit=$?
+          set -e
+
+          apk=""
+          for candidate in \
+            build/app/outputs/apk/release/app-release-unsigned.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            build/app/outputs/flutter-apk/app-release-unsigned.apk \
+            build/app/outputs/flutter-apk/app-release.apk; do
+            if [[ -s "$candidate" ]]; then
+              apk="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$apk" ]]; then
+            echo "::error::No release APK was produced (Flutter exit: $flutter_exit)."
+            find build/app/outputs -type f -name '*.apk' -print || true
+            exit 1
+          fi
+
+          if [[ "$flutter_exit" -ne 0 ]]; then
+            echo "::warning::Flutter CLI could not detect the unsigned APK, but Gradle produced $apk."
+          fi
+
+          # Ensure it really is an intact, UNSIGNED APK, not a debug-signed
+          # release APK or a misnamed artifact.
+          unzip -tqq "$apk"
+          unzip -p "$apk" AndroidManifest.xml > /dev/null
+          signer="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$signer" ]]; then
+            echo "::error::Android apksigner not found."
+            exit 1
+          fi
+          if "$signer" verify "$apk"; then
+            echo "::error::APK is signed! Refusing to upload it as unsigned."
+            exit 1
+          fi
+
+          mkdir -p dist
+          cp "$apk" dist/AnimePlex-unsigned.apk
+          echo "Unsigned APK verified: $(du -h dist/AnimePlex-unsigned.apk | cut -f1)"
+
+      - name: Upload unsigned APK only
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimePlex-unsigned-${{ github.run_number }}
+          path: dist/AnimePlex-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

@@ -39,6 +39,10 @@ val noDiscord =
 val isNightly =
     System.getenv("ZANGETSU_NIGHTLY") == "1" || project.hasProperty("nightly")
 
+// Opt-in for a genuinely unsigned release APK (for manual MT Manager signing).
+// Normal local and CI builds keep their existing signing behaviour.
+val isUnsignedApk = System.getenv("ZANGETSU_UNSIGNED_APK") == "1"
+
 android {
     namespace = "com.spyou.watch_app"
     compileSdk = flutter.compileSdkVersion
@@ -169,10 +173,12 @@ android {
                 signingConfigs.getByName("debug")
         }
         release {
-            signingConfig = if (hasReleaseKeystore)
-                signingConfigs.getByName("release")
-            else
-                signingConfigs.getByName("debug")
+            // Do not use the default debug key for the manual-signing APK.
+            signingConfig = when {
+                isUnsignedApk -> null
+                hasReleaseKeystore -> signingConfigs.getByName("release")
+                else -> signingConfigs.getByName("debug")
+            }
 
             // Minification stays OFF: CloudStream `.cs3` plugins are external
             // DEX loaded at runtime that link BY NAME against the bundled
