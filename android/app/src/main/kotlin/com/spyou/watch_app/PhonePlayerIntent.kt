@@ -12,6 +12,7 @@ package com.spyou.watch_app
  */
 object PhonePlayerIntent {
     const val EXTRA_CONTROLS = "controlLayout"
+    const val EXTRA_ADMIN_CONTROLS_LOCKED = "adminControlsLocked"
     const val EXTRA_URL = "url"
     const val EXTRA_HEADERS = "headers"          // flat String[]: k,v,k,v
     const val EXTRA_MIME = "mimeType"

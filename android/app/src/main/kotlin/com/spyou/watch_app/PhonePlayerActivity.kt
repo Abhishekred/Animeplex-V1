@@ -217,6 +217,7 @@ class PhonePlayerActivity : Activity() {
     private var playbackStarted = false
     private var resizeIndex = 0
     private var controlLayout = PhonePlayerControlLayout()
+    private var adminControlsLocked = false
     private var controlsLocked = false
     private var unlockControl: View? = null
     private val controlIconFont by lazy {
@@ -233,6 +234,7 @@ class PhonePlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controlLayout = PhonePlayerControlLayout.fromJson(intent.getStringExtra(PhonePlayerIntent.EXTRA_CONTROLS))
+        adminControlsLocked = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_ADMIN_CONTROLS_LOCKED, false)
         megaSkipEnabled = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP, true)
         megaSkipSeconds = intent.getIntExtra(PhonePlayerIntent.EXTRA_MEGA_SKIP_SECONDS, 85).coerceIn(5, 180)
         keepScreenOn = intent.getBooleanExtra(PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON, true)
@@ -729,6 +731,10 @@ class PhonePlayerActivity : Activity() {
     }
 
     private fun showControlArrangement() {
+        if (adminControlsLocked) {
+            toast("Player controls are managed by AnimePlex Admin")
+            return
+        }
         handler.removeCallbacks(hideRunnable)
         val keys = listOf("speed", "tracks", "quality", "sources", "more", "episodes", "rotate", "fit", "cast", "info")
             .filter { it != "episodes" || !isMovie }

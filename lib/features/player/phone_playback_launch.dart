@@ -220,6 +220,7 @@ Map<String, dynamic> phonePlayerArgs({
   Map<String, String>? coverHeaders,
   String playerOrientation = 'landscape',
   Map<String, List<String>>? controlLayout,
+  bool adminControlsLocked = false,
   Map<String, dynamic>? watchData,
   String? showDescription,
   List<String>? availableCategories,
@@ -274,6 +275,7 @@ Map<String, dynamic> phonePlayerArgs({
     'coverHeaders': coverHeaders ?? const <String, String>{},
     'playerOrientation': playerOrientation,
     'controlLayout': ?controlLayout,
+    'adminControlsLocked': adminControlsLocked,
     'watchData': ?watchData,
     'showDescription': ?showDescription,
     'availableCategories': availableCategories ?? const <String>[],
@@ -616,6 +618,7 @@ class PhoneNativePlayer {
       cover: _cover,
       coverHeaders: _coverHeaders,
       playerOrientation: prefs.playerOrientation,
+      adminControlsLocked: prefs.playerControlsLocked,
       controlLayout: {
         'top': prefs.playerBarTop ?? PlayerControlsConfig.defaultTop,
         'left': prefs.playerBarLeft ?? PlayerControlsConfig.defaultLeft,
@@ -1119,6 +1122,7 @@ class PhoneNativePlayer {
         }
       case 'saveControlLayout':
         {
+          if (sl<PlaybackPrefs>().playerControlsLocked) return false;
           final layout = phoneControlLayoutForSave(
             _callArgs(call),
             sessionId: _sessionId,
