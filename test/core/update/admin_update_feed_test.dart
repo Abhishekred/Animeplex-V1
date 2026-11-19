@@ -66,6 +66,23 @@ void main() {
       );
     });
   });
+  test('MB estimates do not reject a valid downloaded link but multipart stays exact', () {
+    expect(UpdateService.validDownloadedSize(
+      24123456, 24000000, multipart: false,
+    ), isTrue);
+    expect(UpdateService.validDownloadedSize(
+      24123456, 24000000, multipart: true,
+    ), isFalse);
+    expect(UpdateService.validDownloadedSize(
+      24000000, 24000000, multipart: true,
+    ), isTrue);
+    expect(UpdateService.validDownloadedSize(
+      24000000, 0, multipart: false,
+    ), isTrue);
+    expect(UpdateService.validDownloadedSize(
+      24, 24000000, multipart: false,
+    ), isFalse);
+  });
   test('multipart APK manifest validates sizes, ordering and safe paths', () {
     const owner = '12345678-1234-1234-1234-123456789abc';
     const build = '12345678-1234-1234-1234-123456789def';

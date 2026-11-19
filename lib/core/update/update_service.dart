@@ -250,6 +250,17 @@ class UpdateService {
     }
   }
 
+  /// Admin link-mode size is an approximate MB value, whereas uploaded APK
+  /// parts have an exact byte manifest. Preserve strict verification for
+  /// uploads without rejecting a valid link download over MB rounding.
+  static bool validDownloadedSize(
+    int actualBytes,
+    int expectedBytes, {
+    required bool multipart,
+  }) =>
+      actualBytes >= 1000000 &&
+      (!multipart || expectedBytes <= 0 || actualBytes == expectedBytes);
+
   /// Download the APK to the cache dir, reporting 0..1 progress. Throws on
   /// failure so the dialog can surface an error.
   Future<File> downloadApk(
@@ -287,10 +298,13 @@ class UpdateService {
         },
       );
     }
-    // Block HTML redirects, truncated downloads and fake "APK" payloads.
-    // A valid APK is a ZIP package and must be meaningfully larger than 1 MB.
+    // Block HTML redirects and fake APK payloads. Multipart uploads retain
+    // exact-size checks; link-mode MB is informational/approximate.
+    // Android also validates APK structure, package id and signing at install.
     final actual = await file.length();
-    if (actual < 1000000 || (expectedSize > 0 && actual != expectedSize)) {
+    if (!validDownloadedSize(
+      actual, expectedSize, multipart: parts.isNotEmpty,
+    )) {
       await file.delete();
       throw Exception('Downloaded APK size is invalid ($actual bytes).');
     }
