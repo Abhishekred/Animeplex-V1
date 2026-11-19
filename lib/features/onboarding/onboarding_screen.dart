@@ -27,6 +27,13 @@ bool isOnboarded() {
 Future<void> _markOnboarded() =>
     Hive.box(ActiveSourceCubit.boxName).put('onboarded', true);
 
+/// The AnimePlex welcome walkthrough is disabled. Persist the completed flag
+/// on first launch so any other startup flow can treat this user as onboarded.
+Future<void> completeOnboardingSilently() async {
+  if (!Hive.isBoxOpen(ActiveSourceCubit.boxName) || isOnboarded()) return;
+  await _markOnboarded();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Splash — shown while initDependencies() runs.
 // ─────────────────────────────────────────────────────────────────────────────

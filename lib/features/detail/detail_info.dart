@@ -107,14 +107,16 @@ class _Description extends StatelessWidget {
 
 class _IconAction extends StatelessWidget {
   const _IconAction({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.tooltip,
     required this.onTap,
     this.active = false,
-  });
+  }) : assert(icon != null || iconWidget != null);
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
 
   /// Small caption shown under the icon (Netflix-style icon-over-label).
   final String label;
@@ -135,7 +137,7 @@ class _IconAction extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 24, color: color),
+              iconWidget ?? Icon(icon, size: 24, color: color),
               const SizedBox(height: 6),
               Text(
                 label,
@@ -151,6 +153,50 @@ class _IconAction extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Simple, crisp Instagram outline at the same 24px size as the other actions.
+/// Drawn locally so the APK does not need another icon font or package.
+class _InstagramGlyph extends StatelessWidget {
+  const _InstagramGlyph();
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    size: const Size(24, 24),
+    painter: _InstagramGlyphPainter(AppColors.textPrimary),
+  );
+}
+
+class _InstagramGlyphPainter extends CustomPainter {
+  const _InstagramGlyphPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(2, 2, 20, 20),
+        const Radius.circular(5.5),
+      ),
+      stroke,
+    );
+    canvas.drawCircle(const Offset(12, 12), 4.3, stroke);
+    canvas.drawCircle(
+      const Offset(17.6, 6.6),
+      1.35,
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _InstagramGlyphPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

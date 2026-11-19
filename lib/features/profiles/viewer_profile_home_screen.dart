@@ -15,7 +15,6 @@ import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart' show ProfileAccountSection;
 import '../auth/pair_tv_screen.dart';
 import '../settings/settings_screen.dart';
-import '../settings/donate_screen.dart';
 import 'viewer_profile_editor_screen.dart';
 import 'viewer_profiles_screen.dart';
 
@@ -75,16 +74,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                       )
                     : const SizedBox.shrink(),
               ),
-            ListTile(
-              leading: const Icon(Icons.favorite_outline_rounded),
-              title: const Text('Donate'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(builder: (_) => const DonateScreen()),
-                );
-              },
-            ),
           ],
         ),
       ),

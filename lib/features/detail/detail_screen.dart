@@ -946,56 +946,17 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
-  /// Globe — open the source's web page in the system browser. Falls back to
-  /// a snackbar when no usable URL can be derived.
-  Future<void> _openSourceSite() async {
-    final url = _sourceWebUrl();
-    if (url == null) {
-      _snack(context.l10n.noWebPageForThisSource);
-      return;
+  /// Open AnimePlex's official Instagram profile, from any title detail page.
+  Future<void> _openInstagram() async {
+    final uri = Uri.parse(
+      'https://www.instagram.com/abhi._shek_07?hvrq=dWx0eTVqd3VlZDZ5',
+    );
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) _snack('Could not open Instagram');
+    } catch (_) {
+      if (mounted) _snack('Could not open Instagram');
     }
-    final ok = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!ok && mounted) _snack(context.l10n.couldNotOpenSourceSite);
-  }
-
-  /// Best-effort web URL for the title. Absolute item URLs (CloudStream/JS)
-  /// pass through; Aniyomi items store a relative path, so join it onto the
-  /// source's base site (mirroring the native `baseUrl + anime.url`).
-  String? _sourceWebUrl() {
-    final u = widget.item.url.trim();
-    if (u.isEmpty) return null;
-    if (u.startsWith('http://') || u.startsWith('https://')) return u;
-    // Z Mode: the item is a metadata title (`zm://anime/mal:123`) and its
-    // sourceId is the pseudo id `zm`, so the join below found no base URL and
-    // the globe only ever said "no web page for this source". The title does
-    // live on a real source — the one Auto Resolve matched — so open that.
-    final c = ZmodeIds.parseShow(u);
-    if (c != null) return _matchedSourceWebUrl(c);
-    final base = sl<SourceRepository>().baseUrlFor(widget.item.sourceId).trim();
-    if (base.isEmpty) return null;
-    if (base.endsWith('/') && u.startsWith('/')) return base + u.substring(1);
-    return base + u;
-  }
-
-  /// The matched source's own page for a Z Mode title, or null when nothing
-  /// has matched it yet — in which case the existing snackbar is the honest
-  /// answer, because there genuinely is no page to open.
-  ///
-  /// The join is [source_actions.joinChapterUrl] rather than a second copy of
-  /// the one above: it is already tested, and it refuses a `showUrl` carrying
-  /// javascript:/file:/intent:, which matters because that value comes from a
-  /// third-party extension.
-  String? _matchedSourceWebUrl(ZCanonical c) {
-    if (!sl.isRegistered<MatchStore>()) return null;
-    final m = sl<MatchStore>().bestFor(c);
-    if (m == null) return null;
-    return source_actions.joinChapterUrl(
-      sl<SourceRepository>().baseUrlFor(m.sourceId),
-      m.showUrl,
-    );
   }
 
   bool get _subscribed =>
@@ -2848,7 +2809,7 @@ class _DetailViewState extends State<_DetailView>
           ),
         ),
 
-        // ── 6. Icon-over-label action row (My List / Trailer / Share / Web) ─
+        // ── 6. Icon-over-label action row (My List / Notify / Share / Instagram) ─
         // "Trailer" is a CloudStream-style result action (recloudstream's
         // result fragment exposes a Trailer button); it opens the fullscreen
         // TrailerScreen and only appears once a trailer id has resolved.
@@ -2908,10 +2869,10 @@ class _DetailViewState extends State<_DetailView>
                   onTap: () => _share(detail, sourceName),
                 ),
                 _IconAction(
-                  icon: Icons.public_rounded,
-                  label: context.l10n.web,
-                  tooltip: context.l10n.openSourceSite,
-                  onTap: _openSourceSite,
+                  iconWidget: const _InstagramGlyph(),
+                  label: 'Instagram',
+                  tooltip: 'Open Instagram',
+                  onTap: _openInstagram,
                 ),
                 // Novel only — a manga chapter is images, not text, and
                 // there's nothing to put in an EPUB.
