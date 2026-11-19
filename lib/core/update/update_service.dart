@@ -7,7 +7,6 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// A newer release explicitly published from the AnimePlex Admin dashboard.
 class UpdateInfo {
@@ -54,46 +53,91 @@ class UpdateService {
   static const String _skipKey = 'skippedVersion';
   static const String _betaKey = 'betaOptIn';
 
+  // Separate public update feed: the app's login Supabase can use a DIFFERENT
+  // project, VPS auth route or be temporarily uninitialized. Never query
+  // release metadata through Supabase.instance.client.
+  static const String _feedBaseUrl =
+      'https://iwiujqjipotwvigvaaid.supabase.co/rest/v1';
+  // Public publishable key: safe to ship in the client; RLS only exposes
+  // published release metadata. Do NOT use a service-role key here.
+  static const String _feedPublishableKey = 'sb_publishable_A436wPL9-Bfc6mg4dtUkQQ_2WLkfY9t';
+
   final Dio _dio = Dio();
+
+  Future<List<Map<String, dynamic>>> _publicRows(
+    String table, Map<String, String> query,
+  ) async {
+    final response = await _dio.get<List<dynamic>>(
+      '$_feedBaseUrl/$table',
+      queryParameters: query,
+      options: Options(
+        headers: const {
+          'apikey': _feedPublishableKey,
+          'Accept': 'application/json',
+        },
+        receiveTimeout: const Duration(seconds: 12),
+        sendTimeout: const Duration(seconds: 12),
+      ),
+    );
+    return (response.data ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  /// Only a direct public HTTPS APK file is acceptable for in-app install.
+  /// Dynamic store links and byte counts such as "24" (meaning MB) are not.
+  static bool validUpdatePackage(String url, int byteSize) {
+    final trimmed = url.trim();
+    final uri = Uri.tryParse(trimmed);
+    return uri != null &&
+        uri.scheme == 'https' &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty &&
+        !trimmed.contains(RegExp(r'\\s')) &&
+        uri.path.toLowerCase().endsWith('.apk') &&
+        (byteSize == 0 || byteSize >= 1000000);
+  }
 
   /// Non-null if a check failed, so manual checks don't claim "latest" on
   /// network or authentication errors. Auto checks intentionally stay silent.
   String? lastCheckError;
 
-  /// About → GitHub is also admin-controlled; fall back to this app's own repo
-  /// when offline, never to the upstream Zangetsu repository.
+  /// About → GitHub follows the update admin's repository setting.
   Future<String> repositoryUrl() async {
     try {
-      final result = await Supabase.instance.client
-          .from('animeplex_update_config')
-          .select('repository_url')
-          .eq('id', true)
-          .maybeSingle();
-      final url = (result?['repository_url'] as String?)?.trim() ?? '';
+      final rows = await _publicRows('animeplex_update_config', {
+        'select': 'repository_url',
+        'id': 'eq.true',
+        'limit': '1',
+      });
+      final url = rows.isEmpty
+          ? ''
+          : ((rows.first['repository_url'] as String?) ?? '').trim();
       final uri = Uri.tryParse(url);
-      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+      if (uri != null && uri.scheme == 'https' &&
+          uri.host.isNotEmpty && uri.userInfo.isEmpty) {
         return url;
       }
     } catch (_) {}
     return fallbackRepositoryUrl;
   }
 
-  /// A release is eligible only if an authorized admin clicked Publish and
-  /// the global update switch is enabled. A beta release also needs both the
-  /// admin beta switch and the device's explicit beta opt-in.
+  /// A release is eligible only after admin Publish, with global delivery ON.
+  /// Beta requires both admin availability and the viewer's beta opt-in.
   Future<UpdateInfo?> checkForUpdate({
     bool respectSkip = false,
     bool automatic = false,
   }) async {
     lastCheckError = null;
     try {
-      final client = Supabase.instance.client;
-      final settings = await client
-          .from('animeplex_update_config')
-          .select('enabled,auto_check,beta_enabled')
-          .eq('id', true)
-          .maybeSingle();
-      if (settings == null || settings['enabled'] != true) return null;
+      final configs = await _publicRows('animeplex_update_config', {
+        'select': 'enabled,auto_check,beta_enabled',
+        'id': 'eq.true',
+        'limit': '1',
+      });
+      if (configs.isEmpty || configs.first['enabled'] != true) return null;
+      final settings = configs.first;
       if (automatic && settings['auto_check'] != true) return null;
 
       final allowBeta =
@@ -101,14 +145,16 @@ class UpdateService {
       final current = (await PackageInfo.fromPlatform()).version;
       final skipped = respectSkip ? await _skippedVersion() : null;
 
-      final releases = await client
-          .from('animeplex_update_releases')
-          .select('version,channel,release_notes,apk_url,apk_size,mandatory')
-          .eq('status', 'published')
-          .limit(100);
+      final releases = await _publicRows('animeplex_update_releases', {
+        'select': 'version,channel,release_notes,apk_url,apk_size,mandatory',
+        'status': 'eq.published',
+        'order': 'published_at.desc',
+        'limit': '100',
+      });
 
       Map<String, dynamic>? best;
       String bestVersion = '';
+      var invalidEligibleApks = 0;
       for (final r in releases) {
         final channel = (r['channel'] as String?) ?? '';
         if (channel != 'stable' && !(allowBeta && channel == 'beta')) {
@@ -119,10 +165,11 @@ class UpdateService {
           continue;
         }
         if (skipped == version && r['mandatory'] != true) continue;
+
         final url = ((r['apk_url'] as String?) ?? '').trim();
-        final parsed = Uri.tryParse(url);
-        if (parsed == null || parsed.scheme != 'https' ||
-            parsed.host.isEmpty || parsed.userInfo.isNotEmpty) {
+        final apkSize = (r['apk_size'] as num?)?.toInt() ?? 0;
+        if (!validUpdatePackage(url, apkSize)) {
+          invalidEligibleApks++;
           continue;
         }
         if (best == null || compareVersions(version, bestVersion) > 0) {
@@ -130,13 +177,18 @@ class UpdateService {
           bestVersion = version;
         }
       }
-      if (best == null) return null;
+      if (best == null) {
+        if (invalidEligibleApks > 0) {
+          lastCheckError =
+              'An admin-published update has an invalid APK link or size. '
+              'Use a direct HTTPS .apk URL and the real byte size (or 0).';
+        }
+        return null;
+      }
 
       final apkUrl = (best['apk_url'] as String).trim();
       final uri = Uri.parse(apkUrl);
-      final asset = uri.pathSegments.isEmpty
-          ? 'AnimePlex-update.apk'
-          : Uri.decodeComponent(uri.pathSegments.last);
+      final asset = Uri.decodeComponent(uri.pathSegments.last);
       return UpdateInfo(
         version: bestVersion,
         notes: ((best['release_notes'] as String?) ?? '').trim(),
@@ -146,8 +198,14 @@ class UpdateService {
         isPrerelease: best['channel'] == 'beta',
         isMandatory: best['mandatory'] == true,
       );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      lastCheckError = status != null
+          ? 'AnimePlex update server returned HTTP $status.'
+          : 'Unable to reach AnimePlex update server. Check your connection.';
+      return null;
     } catch (_) {
-      lastCheckError = 'Unable to check AnimePlex updates. Check your connection.';
+      lastCheckError = 'Unable to check AnimePlex updates. Please retry.';
       return null;
     }
   }
@@ -179,17 +237,19 @@ class UpdateService {
         if (total > 0) onProgress?.call(received / total);
       },
     );
-    // Integrity guard: a truncated/corrupt download would otherwise be handed to
-    // the installer and rejected as "package appears to be invalid". Fail loudly
-    // instead so the user just retries the download.
-    if (expectedSize > 0) {
-      final actual = await file.length();
-      if (actual != expectedSize) {
-        await file.delete();
-        throw Exception(
-          'Download incomplete ($actual/$expectedSize bytes) — please retry.',
-        );
-      }
+    // Block HTML redirects, truncated downloads and fake "APK" payloads.
+    // A valid APK is a ZIP package and must be meaningfully larger than 1 MB.
+    final actual = await file.length();
+    if (actual < 1000000 || (expectedSize > 0 && actual != expectedSize)) {
+      await file.delete();
+      throw Exception('Downloaded APK size is invalid ($actual bytes).');
+    }
+    final header = await file.openRead(0, 4).first;
+    if (header.length < 4 ||
+        header[0] != 0x50 || header[1] != 0x4b ||
+        header[2] != 0x03 || header[3] != 0x04) {
+      await file.delete();
+      throw Exception('Download is not an APK file.');
     }
     return file;
   }
