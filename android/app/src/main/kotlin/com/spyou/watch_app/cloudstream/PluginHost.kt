@@ -295,6 +295,10 @@ class PluginHost(private val context: Context) {
             val loadError = runCatching {
                 if (instance is Plugin) instance.load(loadCtx) else instance.load()
             }.exceptionOrNull()
+            // The popup manager is bundled inside some Phisher98 .cs3s, not
+            // inside AnimePlex. Suppress only its own modal state; keep APIs
+            // and plugin initialization unchanged.
+            PhisherDonationBlocker.suppressManager(loader)
             val registered = APIHolder.allProviders.any { it.sourcePlugin == fileId }
             if (loadError != null && !registered) throw loadError
             loaded.add(file.absolutePath)
@@ -523,6 +527,7 @@ class PluginHost(private val context: Context) {
         val providers = APIHolder.allProviders
         val before = synchronized(providers) { providers.toList() }
         instance.load(activity) // binds openSettings against the real activity
+        PhisherDonationBlocker.suppressManager(loader)
         synchronized(providers) {
             providers.filter { it !in before }.forEach { dup ->
                 providers.remove(dup)

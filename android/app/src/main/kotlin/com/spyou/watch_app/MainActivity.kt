@@ -2,6 +2,7 @@ package com.spyou.watch_app
 
 import android.app.PictureInPictureParams
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -28,6 +29,7 @@ import com.spyou.watch_app.aniyomi.AniyomiBridge
 import com.spyou.watch_app.cast.CastManager
 import com.spyou.watch_app.cloudstream.CsPluginLoaderActivity
 import com.spyou.watch_app.cloudstream.PluginHost
+import com.spyou.watch_app.cloudstream.PhisherDonationBlocker
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
 import com.spyou.watch_app.mihon.MihonBridge
@@ -38,6 +40,9 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import io.flutter.embedding.android.FlutterEngineConfigurator
 import io.flutter.embedding.android.FlutterFragment
 import io.flutter.embedding.engine.plugins.util.GeneratedPluginRegister
@@ -91,6 +96,39 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private val csPlayPool = Executors.newFixedThreadPool(2)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
+
+    // Phisher98 .cs3 plugins can show their own donation dialogs over Flutter.
+    // Block those two exact classes before a dialog window is created; never
+    // touch Cloudflare, login, settings or other extension dialogs.
+    private val phisherDonationGuard = object : FragmentManager.FragmentLifecycleCallbacks() {
+        override fun onFragmentPreAttached(
+            fm: FragmentManager,
+            f: Fragment,
+            context: Context,
+        ) {
+            if (PhisherDonationBlocker.isBlockedDonationDialog(f)) {
+                (f as DialogFragment).showsDialog = false
+            }
+        }
+
+        override fun onFragmentCreated(
+            fm: FragmentManager,
+            f: Fragment,
+            savedInstanceState: Bundle?,
+        ) {
+            if (!PhisherDonationBlocker.isBlockedDonationDialog(f)) return
+            // DialogFragment resets showsDialog inside onCreate. Repeat here,
+            // before onStart can display the popup.
+            (f as DialogFragment).showsDialog = false
+            Log.i("PhisherDonationBlocker", "Suppressed extension donation dialog")
+            window.decorView.post {
+                if (f.isAdded && !fm.isDestroyed) {
+                    runCatching { f.dismissAllowingStateLoss() }
+                        .onFailure { Log.w("PhisherDonationBlocker", "Could not dismiss donation fragment", it) }
+                }
+            }
+        }
+    }
 
     /// Icon id (as Dart knows it) → the activity-alias that carries that icon.
     /// Keys are persisted in prefs and the alias names appear on users' home
@@ -214,6 +252,9 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // The manifest meta-data is unchanged; we just have to read it ourselves.
         switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            phisherDonationGuard, true,
+        )
         reconcileIconAliases()
         setContentView(R.layout.activity_main)
         // Survives configuration changes / process death: re-attaching a second
@@ -2028,6 +2069,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         if (com.lagradost.cloudstream3.CommonActivity.activity === this) {
             com.lagradost.cloudstream3.CommonActivity.setActivityInstance(null)
         }
+        supportFragmentManager.unregisterFragmentLifecycleCallbacks(phisherDonationGuard)
         super.onDestroy()
     }
 
