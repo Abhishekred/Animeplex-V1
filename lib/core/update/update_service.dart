@@ -94,7 +94,7 @@ class UpdateService {
         uri.scheme == 'https' &&
         uri.host.isNotEmpty &&
         uri.userInfo.isEmpty &&
-        !trimmed.contains(RegExp(r'\\s')) &&
+        !trimmed.contains(RegExp(r'\s')) &&
         uri.path.toLowerCase().endsWith('.apk') &&
         (byteSize == 0 || byteSize >= 1000000);
   }
