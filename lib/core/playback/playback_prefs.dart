@@ -451,18 +451,50 @@ class PlaybackPrefs {
   /// Hidden isn't stored: it's whatever isn't in either list. That's what lets
   /// a control added in a later version land in Hidden on its own, instead of
   /// needing every saved layout migrated.
+  /// Public, guest-safe admin defaults synced independently of account auth.
+  /// Existing personal layouts win only when the admin allows customization.
+  bool get adminPlayerControlsEnabled =>
+      _box.get('adminPlayerControlsEnabled', defaultValue: false) == true;
+  bool get allowPlayerCustomization =>
+      _box.get('adminAllowPlayerCustomization', defaultValue: true) != false;
+  bool get playerControlsLocked =>
+      adminPlayerControlsEnabled && !allowPlayerCustomization;
+
+  List<String>? _effectivePlayerBar(String local, String remote) {
+    final personal = (_box.get(local) as List?)?.cast<String>();
+    if (!adminPlayerControlsEnabled) return personal;
+    final published = (_box.get(remote) as List?)?.cast<String>();
+    if (playerControlsLocked || personal == null) return published ?? personal;
+    return personal;
+  }
+
   List<String>? get playerBarTop =>
-      (_box.get('playerBarTop') as List?)?.cast<String>();
+      _effectivePlayerBar('playerBarTop', 'adminPlayerBarTop');
   List<String>? get playerBarLeft =>
-      (_box.get('playerBarLeft') as List?)?.cast<String>();
+      _effectivePlayerBar('playerBarLeft', 'adminPlayerBarLeft');
   List<String>? get playerBarRight =>
-      (_box.get('playerBarRight') as List?)?.cast<String>();
+      _effectivePlayerBar('playerBarRight', 'adminPlayerBarRight');
+
+  Future<void> applyAdminPlayerControls({
+    required bool enabled,
+    required bool allowCustomization,
+    required List<String> top,
+    required List<String> left,
+    required List<String> right,
+  }) => _box.putAll({
+        'adminPlayerControlsEnabled': enabled,
+        'adminAllowPlayerCustomization': allowCustomization,
+        'adminPlayerBarTop': top,
+        'adminPlayerBarLeft': left,
+        'adminPlayerBarRight': right,
+      });
 
   Future<void> setPlayerBar(
     List<String> top,
     List<String> left,
     List<String> right,
   ) async {
+    if (playerControlsLocked) return;
     await _box.put('playerBarTop', top);
     await _box.put('playerBarLeft', left);
     await _box.put('playerBarRight', right);
@@ -472,6 +504,7 @@ class PlaybackPrefs {
   /// defaults in, so a future change to those defaults reaches anyone who
   /// hasn't customised.
   Future<void> resetPlayerBar() async {
+    if (playerControlsLocked) return;
     await _box.delete('playerBarTop');
     await _box.delete('playerBarLeft');
     await _box.delete('playerBarRight');

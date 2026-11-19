@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
+import 'core/admin/admin_controls_sync.dart';
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
 import 'core/app_mode.dart';
@@ -638,6 +639,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         unawaited(sl<AuthCubit>().revalidateIfFlagged());
       }
       _syncOnResume();
+      unawaited(AdminControlsSync.refresh());
       unawaited(_checkSubscriptions());
       // The wallpaper may have changed while we were away. No-op unless
       // Material You is on, and only rebuilds if the colours actually moved.
@@ -694,6 +696,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       isOffline: () =>
           widget.bootOffline && DateTime.now().isBefore(offlineUntil),
     );
+    // Guest users fetch the same public admin controls as signed-in users.
+    // This is asynchronous and never delays Home or the splash.
+    unawaited(AdminControlsSync.refresh());
     // Bypass the first-run walkthrough without leaving its onboarding flag
     // unset. Never block Home if local preferences cannot be written.
     try {

@@ -47,19 +47,51 @@ class StreamingPrefs {
   static Box? get _boxOrNull =>
       Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
-  /// The chosen country, or the device's. Always a valid 2-letter upper-case
-  /// code: a junk stored value falls back rather than reaching the API, where
-  /// it would silently return an empty catalogue.
+  /// Admin defaults are cached in this Hive box, with offline fallback.
+  /// A locked admin region always wins; otherwise a viewer's own choice wins.
+  static bool get adminRegionEnabled =>
+      _boxOrNull?.get('adminRegionEnabled', defaultValue: false) == true;
+  static bool get allowRegionCustomization =>
+      _boxOrNull?.get('adminAllowRegionCustomization', defaultValue: true) != false;
+  static bool get regionLocked =>
+      adminRegionEnabled && !allowRegionCustomization;
+
   static String get region {
-    final v = _boxOrNull?.get(_regionKey);
-    return (v is String && _valid(v)) ? v.toUpperCase() : deviceRegion();
+    final stored = _boxOrNull?.get(_regionKey);
+    final personal = stored is String && _valid(stored)
+        ? stored.toUpperCase()
+        : null;
+    final remote = _boxOrNull?.get('adminStreamingRegion');
+    final admin = remote is String && _valid(remote)
+        ? remote.toUpperCase()
+        : null;
+    if (adminRegionEnabled && admin != null && (regionLocked || personal == null)) {
+      return admin;
+    }
+    return personal ?? deviceRegion();
   }
 
-  static Future<void> setRegion(String r) {
+  static Future<void> applyAdminRegion({
+    required bool enabled,
+    required String regionCode,
+    required bool allowCustomization,
+  }) async {
     final box = _boxOrNull;
-    if (box == null || !_valid(r)) return Future.value();
-    box.put(_regionKey, r.toUpperCase());
-    revision.value++;
-    return Future.value();
+    if (box == null || !_valid(regionCode)) return;
+    final before = region;
+    await box.putAll({
+      'adminRegionEnabled': enabled,
+      'adminStreamingRegion': regionCode.toUpperCase(),
+      'adminAllowRegionCustomization': allowCustomization,
+    });
+    if (before != region) revision.value++;
+  }
+
+  static Future<void> setRegion(String r) async {
+    final box = _boxOrNull;
+    if (box == null || !_valid(r) || regionLocked) return;
+    final before = region;
+    await box.put(_regionKey, r.toUpperCase());
+    if (before != region) revision.value++;
   }
 }

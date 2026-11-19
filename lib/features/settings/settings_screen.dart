@@ -658,6 +658,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// titles the user cannot get — which is why this is a visible setting and
   /// not only a locale guess.
   Future<void> _pickStreamingRegion() async {
+    if (StreamingPrefs.regionLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Streaming region is managed by AnimePlex Admin.')),
+      );
+      return;
+    }
     final current = StreamingPrefs.region;
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -993,7 +999,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       section: SettingsSection.sources,
       icon: Icons.public_rounded,
       title: l10n.streamingRegion,
-      subtitle: '${l10n.streamingRegionSubtitle} · ${StreamingPrefs.region}',
+      subtitle: '${l10n.streamingRegionSubtitle} · ${StreamingPrefs.region}' +
+          (StreamingPrefs.regionLocked ? ' · Admin managed' : ''),
       keywords: 'streaming region country provider watch service catalogue',
       onTap: _pickStreamingRegion,
     ),

@@ -43,6 +43,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
       PlayerControlsConfig(top: _top, left: _left, right: _right);
 
   void _apply(VoidCallback change) {
+    if (_prefs.playerControlsLocked) return;
     setState(change);
     _prefs.setPlayerBar(_top, _left, _right);
   }
@@ -76,6 +77,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
   });
 
   Future<void> _reset() async {
+    if (_prefs.playerControlsLocked) return;
     await _prefs.resetPlayerBar();
     if (!mounted) return;
     setState(() {
@@ -94,7 +96,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
         title: Text(context.l10n.playerControls),
         actions: [
           TextButton(
-            onPressed: _reset,
+            onPressed: _prefs.playerControlsLocked ? null : _reset,
             child: Text(
               context.l10n.reset,
               style: AppText.body.copyWith(color: AppColors.accent),
@@ -106,6 +108,14 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
         children: [
           _preview(),
+          if (_prefs.playerControlsLocked)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Text(
+                'This player layout is managed by AnimePlex Admin.',
+                style: AppText.caption,
+              ),
+            ),
           const SizedBox(height: 4),
           for (final slot in ControlSlot.values) ...[
             SettingsSectionLabel(
@@ -277,7 +287,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Row(
         children: [
-          if (index != null)
+          if (index != null && !_prefs.playerControlsLocked)
             ReorderableDragStartListener(
               index: index,
               child: const Padding(
@@ -312,7 +322,8 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
                 ),
               ),
             ),
-          _moveMenu(id, slot, c.pinned),
+          if (!_prefs.playerControlsLocked) _moveMenu(id, slot, c.pinned)
+          else const Icon(Icons.lock_outline_rounded, size: 16),
         ],
       ),
     );
