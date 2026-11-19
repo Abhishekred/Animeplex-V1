@@ -24,12 +24,11 @@ class SplashStyle {
   static const String _key = 'splashStyleId';
 
   /// Used when no splash choice has been saved.
-  static const String defaultId = 'bankai';
+  static const String defaultId = 'animeplex';
 
   /// [defaultId] first, so the picker leads with what a fresh install wears.
   static const List<SplashStyleOption> options = [
-    SplashStyleOption(id: 'bankai', label: 'Bankai'),
-    SplashStyleOption(id: 'wordmark', label: 'Wordmark'),
+    SplashStyleOption(id: 'animeplex', label: 'AnimePlex'),
   ];
 
   /// Falls back to [defaultId] for anything unknown, so a build that drops an

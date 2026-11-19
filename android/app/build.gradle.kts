@@ -64,12 +64,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spyou.watch_app"
+        applicationId = "com.animeplex_v1"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        resValue("string", "app_name", if (isNightly) "Zangetsu Nightly" else "Zangetsu")
+        resValue("string", "app_name", if (isNightly) "AnimePlex Nightly" else "AnimePlex")
         if (noDiscord) {
             externalNativeBuild {
                 cmake {
