@@ -19,7 +19,24 @@ void main() {
         isTrue,
       );
     });
-    test('rejects store redirects and values entered in MB instead of bytes', () {
+    test('accepts HTTPS download endpoints without an .apk suffix', () {
+      expect(
+        UpdateService.validUpdatePackage(
+          'https://d.apkpure.com/b/APK/com.Animeplex.music?version=latest',
+          0,
+        ),
+        isTrue,
+      );
+      expect(
+        UpdateService.validUpdatePackage('https://example.com/get?id=2', 0),
+        isTrue,
+      );
+      expect(
+        UpdateService.validUpdatePackage('https://example.com/download', 120000000),
+        isTrue,
+      );
+    });
+    test('rejects HTTP, credentials, whitespace and sizes typed in MB', () {
       expect(
         UpdateService.validUpdatePackage(
           'https://d.apkpure.com/b/APK/com.Animeplex.music?version=latest',
@@ -36,7 +53,15 @@ void main() {
         isFalse,
       );
       expect(
-        UpdateService.validUpdatePackage('https://example.com/get?id=2', 0),
+        UpdateService.validUpdatePackage(
+          'https://someone:secret@example.com/download', 0,
+        ),
+        isFalse,
+      );
+      expect(
+        UpdateService.validUpdatePackage(
+          'https://example.com/bad url', 0,
+        ),
         isFalse,
       );
     });

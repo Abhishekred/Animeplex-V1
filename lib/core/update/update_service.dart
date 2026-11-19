@@ -93,8 +93,10 @@ class UpdateService {
         .toList(growable: false);
   }
 
-  /// Only a direct public HTTPS APK file is acceptable for in-app install.
-  /// Dynamic store links and byte counts such as "24" (meaning MB) are not.
+  /// Accept public HTTPS APK download endpoints even when the URL does not
+  /// end in .apk (e.g. /download?id=123 or a 302 redirect). The downloaded
+  /// bytes, not the URL suffix, are checked before Android installation.
+  /// Byte counts such as 24 (meaning MB) are still rejected.
   static bool validUpdatePackage(String url, int byteSize) {
     final trimmed = url.trim();
     final uri = Uri.tryParse(trimmed);
@@ -103,7 +105,6 @@ class UpdateService {
         uri.host.isNotEmpty &&
         uri.userInfo.isEmpty &&
         !trimmed.contains(RegExp(r'\s')) &&
-        uri.path.toLowerCase().endsWith('.apk') &&
         (byteSize == 0 || byteSize >= 1000000);
   }
 
@@ -204,7 +205,17 @@ class UpdateService {
       final apkUrl = uploaded ? '' : (best['apk_url'] as String).trim();
       final asset = uploaded
           ? 'AnimePlex-' + bestVersion + '.apk'
-          : Uri.decodeComponent(Uri.parse(apkUrl).pathSegments.last);
+          : (() {
+              // Many valid APK URLs use extensionless paths or redirects;
+              // always display a meaningful .apk name for those sources.
+              final segments = Uri.parse(apkUrl).pathSegments;
+              final name = segments.isEmpty
+                  ? ''
+                  : Uri.decodeComponent(segments.last);
+              return name.toLowerCase().endsWith('.apk')
+                  ? name
+                  : 'AnimePlex-' + bestVersion + '.apk';
+            })();
       final parts = uploaded
           ? MultipartUpdate.parse(best['apk_parts'] as List<dynamic>)
           : const <UpdatePart>[];
