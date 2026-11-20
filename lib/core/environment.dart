@@ -39,8 +39,8 @@ class Environment {
   /// `zangetsu://pair`. App-facing TV QRs encode the deeplink directly.
   static const String sitePairUrl = '$siteBaseUrl/pair/';
 
-  /// New share links open with animeplex://open; zangetsu://open is still
-  /// supported for backwards compatibility. Tracker OAuth stays on zangetsu.
+  /// AnimePlex shares use animeplex://open only.
+  /// Existing tracker OAuth and TV pairing keep their separate scheme.
   static const String openLinkScheme = 'animeplex';
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';
