@@ -56,7 +56,7 @@ class ZModePrefs {
 
   static StreamKind get streamKind {
     final v = _boxOrNull?.get(_kStreamKind) as String?;
-    return v == StreamKind.movie.name ? StreamKind.movie : StreamKind.anime;
+    return v == StreamKind.anime.name ? StreamKind.anime : StreamKind.movie;
   }
 
   static Future<void> setStreamKind(StreamKind kind) async {
