@@ -24,6 +24,7 @@ import '../../core/reading/read_history.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/ui/liquid_nav_glass.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/ui_strings.dart';
@@ -736,7 +737,7 @@ class _LiquidNavDock extends StatelessWidget {
                   tabs: glassTabs,
                   selectedIndex: tabs.indexOf(active).clamp(0, tabs.length - 1),
                   collapsed: collapsed,
-                  modesEnabled: false,
+                  modesEnabled: true,
                   quality: glassQuality,
                   settings: glass,
                   onTabSelected: (index) => onSelected(tabs[index]),
