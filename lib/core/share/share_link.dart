@@ -3,7 +3,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 
 /// Encodes a [MediaItem] into a short shareable web link and decodes an incoming
-/// `animeplex://open?…` or legacy `zangetsu://open?…` into a [MediaItem].
+/// `animeplex://open?…` into a [MediaItem].
 ///
 /// The shared link is an HTTPS URL to the site's `/open/` page:
 ///   `https://abhishek.dpdns.org/open/?s=<source>&u=<url>&t=<title>&y=<a|m>&c=<cover>`
@@ -70,11 +70,10 @@ class ShareLink {
     );
   }
 
-  /// Parse an AnimePlex (or older Zangetsu) deep link into a [MediaItem], or null
+  /// Parse an AnimePlex-only deep link into a [MediaItem], or null
   /// when [uri] is not an open-link or is missing the source/url.
   static MediaItem? parse(Uri uri) {
-    if ((uri.scheme != Environment.openLinkScheme &&
-            uri.scheme != Environment.trackerRedirectScheme) ||
+    if (uri.scheme != Environment.openLinkScheme ||
         uri.host != Environment.openLinkHost) {
       return null;
     }
@@ -88,11 +87,9 @@ class ShareLink {
       url: u,
       type: q['y'] == 'm' ? ProviderType.movie : ProviderType.anime,
       sourceId: s,
-      // Absent on links shared by older builds, which is why Detail still
-      // falls back to whatever the source's detail call returns.
+      // When the cover is missing, Detail fetches the original image.
       cover: (c != null && c.isNotEmpty) ? c : null,
-      // Null on an older link: the recipient then reads it with their own
-      // provider, which is what happened before this was carried at all.
+      // Null when no catalogue/provider hint was supplied.
       savedFrom: q['p'],
     );
   }
