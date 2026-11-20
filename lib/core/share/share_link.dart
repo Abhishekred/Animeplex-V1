@@ -3,13 +3,13 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 
 /// Encodes a [MediaItem] into a short shareable web link and decodes an incoming
-/// `zangetsu://open?…` deep link back into a [MediaItem].
+/// `animeplex://open?…` or legacy `zangetsu://open?…` into a [MediaItem].
 ///
 /// The shared link is an HTTPS URL to the site's `/open/` page:
-///   `https://…/Zangetsu-Site/open/?s=<source>&u=<url>&t=<title>&y=<a|m>&c=<cover>`
+///   `https://abhishek.dpdns.org/open/?s=<source>&u=<url>&t=<title>&y=<a|m>&c=<cover>`
 /// Only the fields needed to re-open the title are carried — the Detail
 /// re-fetches everything else — which keeps the link short. When installed, the
-/// app catches it via `zangetsu://open?…`; otherwise the page offers the app.
+/// app catches it via `animeplex://open?…`; otherwise the page offers the app.
 class ShareLink {
   const ShareLink._();
 
@@ -42,9 +42,9 @@ class ShareLink {
 
   /// Human-facing share text: the title + the link.
   static String shareText(MediaItem item) =>
-      '${item.title}\n\nWatch on Zangetsu:\n${forItem(item)}';
+      '${item.title}\n\nWatch on AnimePlex:\n${forItem(item)}';
 
-  /// "Open in Zangetsu" URL for the Discord Rich Presence button while
+  /// "Open in AnimePlex" URL for the Discord Rich Presence button while
   /// watching: the same https share link, so a friend with the app lands on
   /// this exact title and one without gets the install page. Null when the
   /// title identity is incomplete (no source or url to reopen).
@@ -70,10 +70,11 @@ class ShareLink {
     );
   }
 
-  /// Parse a `zangetsu://open?s=…&u=…` deep link into a [MediaItem], or null
+  /// Parse an AnimePlex (or older Zangetsu) deep link into a [MediaItem], or null
   /// when [uri] is not an open-link or is missing the source/url.
   static MediaItem? parse(Uri uri) {
-    if (uri.scheme != Environment.openLinkScheme ||
+    if ((uri.scheme != Environment.openLinkScheme &&
+            uri.scheme != Environment.trackerRedirectScheme) ||
         uri.host != Environment.openLinkHost) {
       return null;
     }
