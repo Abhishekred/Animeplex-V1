@@ -111,7 +111,9 @@ class _RootShellState extends State<RootShell>
   ///
   /// Starts wherever the user chose to land; [NavPrefs.startTab] falls back to
   /// the leftmost tab, so an untouched install still opens on Home.
-  late DockTab _tab = _navPrefs.startTab;
+  late DockTab _tab = _navPrefs.startTab == DockTab.sources
+      ? DockTab.home
+      : _navPrefs.startTab;
 
   /// Whether the floating mode bar (Anime / Movie/TV / Manga / Novel) is
   /// showing above the dock. Z Mode only — the centre button that toggles it
@@ -255,7 +257,66 @@ class _RootShellState extends State<RootShell>
     super.dispose();
   }
 
+  /// The former Sources dock slot opens the existing four content modes.
+  /// Provider management remains available from Settings > Providers.
+  Future<void> _openContentCategoryMenu() async {
+    if (!mounted) return;
+    final screen = MediaQuery.sizeOf(context);
+    final currentMode = sl<ContentModeCubit>().state;
+    final currentKind = ZModePrefs.streamKind;
+    final choice = await showMenu<ModeChoice>(
+      context: context,
+      color: AppColors.settingsCard,
+      elevation: 12,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      position: RelativeRect.fromLTRB(
+        screen.width * 0.34,
+        screen.height - MediaQuery.paddingOf(context).bottom - 92,
+        screen.width * 0.10,
+        80,
+      ),
+      items: [
+        for (final entry in modeChoices)
+          if (ZModePrefs.enabled ||
+              entry.mode != ContentMode.anime ||
+              entry.kind == StreamKind.anime)
+            PopupMenuItem<ModeChoice>(
+              value: entry,
+              height: 56,
+              child: Row(
+                children: [
+                  Icon(entry.icon, color: AppColors.textPrimary),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      entry.label(context),
+                      style: AppText.body.copyWith(color: AppColors.textPrimary),
+                    ),
+                  ),
+                  if (entry.mode == currentMode &&
+                      (entry.mode != ContentMode.anime ||
+                          entry.kind == currentKind))
+                    const Icon(Icons.check_rounded, color: AppColors.accent),
+                ],
+              ),
+            ),
+      ],
+    );
+    if (choice == null || !mounted) return;
+    await ZModePrefs.setStreamKind(choice.kind);
+    await sl<ContentModeCubit>().setMode(choice.mode);
+    if (choice.mode != ContentMode.anime) {
+      sl<HomeCubit>().load(reset: true);
+    }
+  }
+
   void _onTabSelected(DockTab tab) {
+    if (tab == DockTab.sources) {
+      unawaited(_openContentCategoryMenu());
+      return;
+    }
     if (tab == DockTab.profile) {
       final now = DateTime.now();
       final lastTap = _lastProfileTap;
@@ -542,21 +603,8 @@ class _RootShellState extends State<RootShell>
                               tabs: tabs,
                               active: _tab,
                               onSelected: _onTabSelected,
-                              centre: modesEnabled
-                                  ? BlocBuilder<ContentModeCubit, ContentMode>(
-                                      bloc: sl<ContentModeCubit>(),
-                                      builder: (_, mode) => ModeFab(
-                                        open: _modeBarOpen,
-                                        icon: iconForMode(
-                                          mode,
-                                          ZModePrefs.streamKind,
-                                        ),
-                                        onTap: () => setState(
-                                          () => _modeBarOpen = !_modeBarOpen,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
+                              // The mode picker now lives in the former Sources tab.
+                              centre: null,
                             );
                           },
                         ),
@@ -644,11 +692,6 @@ class _LiquidNavDock extends StatelessWidget {
       extraBlur: glassBlurEnabled,
       glassVisibility: glassVisibility,
     );
-    final menuGlass =
-        liquidNavGlassSettings(glassTint, extraBlur: glassBlurEnabled).copyWith(
-          glassColor: AppColors.settingsCard.withValues(alpha: 0.84),
-          blur: 8,
-        );
     final glassTabs = [
       for (final tab in tabs)
         GlassTab(
@@ -672,8 +715,8 @@ class _LiquidNavDock extends StatelessWidget {
                   child: _icon(tab, selected: true),
                 )
               : _icon(tab, selected: true),
-          label: tab.localizedLabel(context),
-          semanticLabel: tab.localizedLabel(context),
+          label: tab == DockTab.sources ? 'Categories' : tab.localizedLabel(context),
+          semanticLabel: tab == DockTab.sources ? 'Categories' : tab.localizedLabel(context),
         ),
     ];
     return ConstrainedBox(
@@ -693,73 +736,13 @@ class _LiquidNavDock extends StatelessWidget {
                   tabs: glassTabs,
                   selectedIndex: tabs.indexOf(active).clamp(0, tabs.length - 1),
                   collapsed: collapsed,
-                  modesEnabled: modesEnabled,
+                  modesEnabled: false,
                   quality: glassQuality,
                   settings: glass,
                   onTabSelected: (index) => onSelected(tabs[index]),
                 ),
               ),
-              if (modesEnabled) ...[
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: GlassMenu(
-                    menuAlignment: GlassMenuAlignment.bottomRight,
-                    autoAdjustToScreen: true,
-                    menuPadding: const EdgeInsets.all(12),
-                    menuWidth: 224,
-                    menuBorderRadius: 28,
-                    itemBorderRadius: 20,
-                    quality: glassQuality,
-                    settings: menuGlass,
-                    selectionColor: AppColors.accent.withValues(alpha: 0.14),
-                    enableInteractionGlow: false,
-                    semanticLabel: 'Change content mode',
-                    triggerBuilder: (context, toggleMenu) => GlassButton(
-                      icon: const Icon(Icons.menu_rounded),
-                      label: 'Change content mode',
-                      onTap: toggleMenu,
-                      width: 56,
-                      height: 56,
-                      quality: glassQuality,
-                      settings: glass,
-                      isStationary: true,
-                    ),
-                    items: [
-                      for (final choice in modeChoices)
-                        if (ZModePrefs.enabled ||
-                            choice.mode != ContentMode.anime ||
-                            choice.kind == StreamKind.anime)
-                          GlassMenuItem(
-                            title: choice.label(context),
-                            icon: Icon(choice.icon),
-                            trailing:
-                                choice.mode == sl<ContentModeCubit>().state &&
-                                    (choice.mode != ContentMode.anime ||
-                                        choice.kind == ZModePrefs.streamKind)
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    color: AppColors.accent,
-                                  )
-                                : null,
-                            isSelected:
-                                choice.mode == sl<ContentModeCubit>().state &&
-                                (choice.mode != ContentMode.anime ||
-                                    choice.kind == ZModePrefs.streamKind),
-                            iconColor: AppColors.textPrimary,
-                            titleStyle: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            height: 48,
-                            onTap: () =>
-                                onModeSelected(choice.mode, choice.kind),
-                          ),
-                    ],
-                  ),
-                ),
-              ],
+
             ],
           ),
         ),
@@ -884,7 +867,7 @@ class _FloatingDock extends StatelessWidget {
         )
       : _DockItem(
           labelOpacity: labels,
-          label: t.localizedLabel(context),
+          label: t == DockTab.sources ? 'Categories' : t.localizedLabel(context),
           glyph: dockGlyphFor(t),
           icon: _iconFor(t),
           selected: active == t,
@@ -1044,7 +1027,7 @@ class _FloatingDock extends StatelessWidget {
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
   DockTab.history => (Icons.history_outlined, Icons.history_rounded),
-  DockTab.sources => (Icons.extension_outlined, Icons.extension_rounded),
+  DockTab.sources => (Icons.menu_rounded, Icons.menu_rounded),
   _ => null,
 };
 
