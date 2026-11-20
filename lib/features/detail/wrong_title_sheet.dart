@@ -122,15 +122,6 @@ class _MatchLineState extends State<MatchLine> {
     );
   }
 
-  Widget _rowActions(BuildContext _, String id) => SourcePickerRowActions(
-    sourceId: id,
-    onCloudflareSolved: (_) async {
-      if (!mounted) return;
-      await _cubit.load();
-      if (mounted) _refreshAfterMatchChange();
-    },
-  );
-
   Future<void> _fix(String sourceId) async {
     final before = sl<SourceMatcher>().sourceForTitle(widget.canonical);
     final picked = await showWrongTitleSheet(
@@ -411,7 +402,7 @@ class _MatchLineState extends State<MatchLine> {
                           ),
                         ),
                       ),
-                      if (selectedId != null) _rowActions(context, selectedId),
+                      // Source dropdown remains; detail-page overflow menu hidden.
                     ],
                   )
                 else
@@ -443,8 +434,7 @@ class _MatchLineState extends State<MatchLine> {
                               ),
                             ),
                           ),
-                          if (selectedId != null)
-                            _rowActions(context, selectedId),
+                          // No 3-dot source menu on title details.
                           const SizedBox(width: 4),
                         ],
                       ),
