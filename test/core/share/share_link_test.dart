@@ -58,10 +58,21 @@ void main() {
       expect(item.title, 'Naruto');
     });
 
-    test('old links remain supported', () {
+    test('legacy Zangetsu share links are rejected', () {
       expect(ShareLink.parse(Uri.parse(
         'zangetsu://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1',
-      )), isNotNull);
+      )), isNull);
+    });
+
+    test('bottom Share button text contains only our HTTPS domain', () {
+      final item = ShareLink.parse(Uri.parse(
+        'animeplex://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1735&t=Naruto',
+      ))!;
+      final text = ShareLink.shareText(item);
+      expect(text, contains('Watch on AnimePlex:'));
+      expect(text, contains('https://abhishek.dpdns.org/open/'));
+      expect(text, isNot(contains('zangetsu.online')));
+      expect(text, isNot(contains('zangetsu://')));
     });
 
     test('unrelated hosts and https are not app schemes', () {
