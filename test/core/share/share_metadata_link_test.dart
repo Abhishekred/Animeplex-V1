@@ -53,7 +53,7 @@ void main() {
 
     final link = ShareLink.forItem(item);
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'animeplex://open')),
     );
 
     expect(back!.savedFrom, 'Simkl');
@@ -75,17 +75,16 @@ void main() {
     expect(link, contains('s=ani%3A1'));
     expect(link, isNot(contains('p=')));
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'animeplex://open')),
     );
     expect(back!.sourceId, 'ani:1');
     expect(back.savedFrom, isNull);
   });
 
-  test('an older link without the provider still opens', () {
-    // Shared before this existed: it must resolve, just with the recipient's
-    // own provider.
+  test('a link without the optional provider field still opens', () {
+    // A missing provider hint still resolves with the recipient's own provider.
     final back = ShareLink.parse(
-      Uri.parse('zangetsu://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1&t=X'),
+      Uri.parse('animeplex://open?s=zm&u=zm%3A%2F%2Fanime%2Fmal%3A1&t=X'),
     );
 
     expect(back, isNotNull);
