@@ -30,9 +30,9 @@ class HomeCataloguePrefs {
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static String _savedKind() {
-    if (!Hive.isBoxOpen(boxName)) return 'metadata';
+    if (!Hive.isBoxOpen(boxName)) return 'source';
     final value = Hive.box(boxName).get(_modeKey);
-    return value is String && value.isNotEmpty ? value : 'metadata';
+    return value is String && value.isNotEmpty ? value : 'source';
   }
 
   static HomeCatalogueKind get catalogueKind {
