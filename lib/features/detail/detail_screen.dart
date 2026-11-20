@@ -938,9 +938,9 @@ class _DetailViewState extends State<_DetailView>
   );
 
   void _share(MediaDetail detail, String sourceName) {
-    // Native OS share sheet with a Zangetsu deep link: on tap it opens the app
-    // straight to this title (on its source) if installed, else the Zangetsu
-    // site to download. The link carries the item, so sourceName is unused now.
+    // The bottom Share button uses our own AnimePlex HTTPS landing domain.
+    // The landing page opens animeplex://open for users with the app installed.
+    // The title metadata comes from widget.item.
     SharePlus.instance.share(
       ShareParams(text: ShareLink.shareText(widget.item)),
     );
