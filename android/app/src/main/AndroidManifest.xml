@@ -107,8 +107,6 @@
                 <data android:scheme="zangetsu" android:host="mal-auth"/>
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
                 <data android:scheme="zangetsu" android:host="mangabaka-auth"/>
-                <!-- Legacy shared-title deep links remain supported after upgrades. -->
-                <data android:scheme="zangetsu" android:host="open"/>
                 <data android:scheme="zangetsu" android:host="room"/>
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
