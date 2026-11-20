@@ -16,7 +16,7 @@ import 'local_video_link.dart';
 import 'pair_link.dart';
 import 'share_link.dart';
 
-/// Listens for incoming share links (`zangetsu://open?…`) and pairing links
+/// Listens for incoming share links (`animeplex://open?…` or legacy `zangetsu://open?…`) and pairing links
 /// (`zangetsu://pair?…` or `https://zangetsu.online/pair/?…`) and opens the
 /// matching screen. Tracker OAuth listeners share the same [AppLinks] stream
 /// and ignore anything they don't own.
