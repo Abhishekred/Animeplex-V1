@@ -299,7 +299,7 @@ class _RootShellState extends State<RootShell>
                   if (entry.mode == currentMode &&
                       (entry.mode != ContentMode.anime ||
                           entry.kind == currentKind))
-                    const Icon(Icons.check_rounded, color: AppColors.accent),
+                    Icon(Icons.check_rounded, color: AppColors.accent),
                 ],
               ),
             ),
