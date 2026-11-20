@@ -25,7 +25,7 @@ void main() {
   test('a metadata title survives the share round trip', () {
     final link = ShareLink.forItem(_zItem('mal:1735'));
     final back = ShareLink.parse(
-      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'zangetsu://open')),
+      Uri.parse(link.replaceFirst(RegExp(r'^https?://[^?]*'), 'animeplex://open')),
     );
 
     expect(back, isNotNull);
