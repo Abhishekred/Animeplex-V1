@@ -30,19 +30,18 @@ class Environment {
   /// Base of the Zangetsu website (landing + reset + the share "open" page).
   static const String siteBaseUrl = 'https://zangetsu.online';
 
-  /// Share links point here. The page opens the app if installed (via the
-  /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
-  /// uses the same domain as the password-reset page.
-  static const String siteOpenUrl = '$siteBaseUrl/open/';
+  /// Public AnimePlex share landing page on Cloudflare Pages.
+  /// TV pairing and OAuth keep their existing Zangetsu configuration.
+  static const String siteOpenUrl = 'https://abhishek.dpdns.org/open/';
 
   /// TV pairing page on the website. Used when someone opens a shared/https
   /// pair link in a browser; the page can hand off to the app via
   /// `zangetsu://pair`. App-facing TV QRs encode the deeplink directly.
   static const String sitePairUrl = '$siteBaseUrl/pair/';
 
-  /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
-  /// it (see [OpenLinkService] + the Android manifest intent-filter).
-  static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
+  /// New share links open with animeplex://open; zangetsu://open is still
+  /// supported for backwards compatibility. Tracker OAuth stays on zangetsu.
+  static const String openLinkScheme = 'animeplex';
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';
 
