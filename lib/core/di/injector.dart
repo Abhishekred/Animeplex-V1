@@ -90,6 +90,8 @@ import '../metadata/tmdb.dart';
 import 'package:watch_app/core/metadata/tmdb_fallback.dart';
 import '../metadata/title_logo_service.dart';
 import '../mode/content_mode_cubit.dart';
+import '../mode/content_mode.dart';
+import '../../features/home/home_catalogue_prefs.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_graphql.dart';
 import '../anilist/anilist_network_policy.dart';
@@ -1214,6 +1216,69 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
     sl<HomeCubit>().rememberStreamKindRows(streamKind, rows);
   };
 
+  // Add the bundled test repository and MovieBox on first successful Android
+  // boot. Run after loadInstalled() so saved repositories and plugin state are
+  // available; never block the splash or take away a user's chosen source.
+  // Do not re-install after a user explicitly removes it later.
+  Future<void> ensureDefaultMovieBox() async {
+    if (!Platform.isAndroid) return;
+    const repoUrl =
+        'https://raw.githubusercontent.com/Abhishekred/Stream-1/test/repo.json';
+    const doneKey = 'animeplex.defaultMovieBox.v1';
+    final prefs = Hive.isBoxOpen(ActiveSourceCubit.boxName)
+        ? Hive.box(ActiveSourceCubit.boxName)
+        : null;
+    if (prefs?.get(doneKey) == true) return;
+
+    if (!csManager.hasRepo(repoUrl)) {
+      await csManager.addRepo(repoUrl);
+    }
+    await csManager.ensureCatalog(repoUrl);
+    final groups = csManager.repoGroups.where((group) => group.url == repoUrl);
+    if (groups.isEmpty) throw StateError('Default CloudStream repository missing');
+    final catalog = groups.first.catalog;
+    final matches = catalog.where(
+      (plugin) =>
+          plugin.internalName.toLowerCase() == 'movieboxprovider' ||
+          plugin.name.toLowerCase().contains('moviebox'),
+    );
+    if (matches.isEmpty) {
+      throw StateError('MovieBox extension not found in test repository');
+    }
+    final plugin = matches.first;
+    if (!csManager.isPluginInstalled(plugin.internalName, repoUrl: repoUrl)) {
+      await csManager.installPlugin(plugin, repoUrl: repoUrl);
+    }
+    if (!csManager.isPluginInstalled(plugin.internalName, repoUrl: repoUrl)) {
+      throw StateError('MovieBox was not registered after installation');
+    }
+
+    // A fresh install has no saved active source. Upgrades and manually
+    // selected sources are preserved, including the user's per-mode pick.
+    final matching = csManager.enabled.where(
+      (provider) =>
+          provider.sourcePlugin?.split('@').first.toLowerCase() ==
+          plugin.internalName.toLowerCase(),
+    );
+    if (matching.isNotEmpty) {
+      final movieBox = matching.first;
+      if (prefs?.get('active_source') == null) {
+        sl<ActiveSourceCubit>().setSource(movieBox.sourceId);
+      }
+      if (prefs?.get('homeCatalogueSourceId.anime') == null) {
+        await HomeCataloguePrefs.setSourceIdFor(
+          ContentMode.anime,
+          movieBox.sourceId,
+        );
+      }
+    }
+    await prefs?.put(doneKey, true);
+    if (sl.isRegistered<HomeCubit>()) {
+      sl<HomeCubit>().load(reset: true);
+    }
+    debugPrint('[cloudstream] default MovieBox ready from Stream-1 test');
+  }
+
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is
   // instant and a heavy/misbehaving plugin can't stall it. Scheduled here,
@@ -1222,6 +1287,12 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
   Future.microtask(() async {
     try {
       await csManager.loadInstalled();
+      try {
+        await ensureDefaultMovieBox();
+      } catch (e) {
+        // Network/download failures are retried at next launch, not fatal.
+        debugPrint('[cloudstream] MovieBox first-run setup deferred: $e');
+      }
       // Honor a saved `cs:` active source that wasn't loaded yet at boot
       // (ActiveSourceCubit fell back to a JS source). reapplySaved only swaps
       // when the saved id is now valid — it never resets an already-restored
