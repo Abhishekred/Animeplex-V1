@@ -456,7 +456,7 @@ class DiscordRpc {
     Duration position = Duration.zero,
     Duration duration = Duration.zero,
     bool playing = true,
-    // https open link for the "Open in Zangetsu" button (ShareLink.watchUrl).
+    // AnimePlex HTTPS share URL for the Discord "Open in AnimePlex" button.
     // Null omits the button — same payload as before.
     String? openUrl,
   }) async {
