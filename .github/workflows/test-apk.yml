@@ -1,4 +1,4 @@
-name: AnimePlex Test APK
+name: AnimePlex Test Unsigned APK
 
 on:
   push:
@@ -10,50 +10,86 @@ permissions:
   contents: read
 
 concurrency:
-  group: animeplex-test-apk-${{ github.ref }}
+  group: animeplex-test-unsigned-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  android:
-    name: Build installable test APK
+  build:
+    name: Build unsigned release APK
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       ZANGETSU_NO_DISCORD: "1"
+      ZANGETSU_UNSIGNED_APK: "1"
+
     steps:
-      - name: Check out test branch
+      - name: Checkout test branch
         uses: actions/checkout@v4
-      - name: Java 17
+
+      - name: Install Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - name: Flutter SDK
+
+      - name: Set up Flutter and Pub cache
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.44.7"
           channel: stable
           cache: true
           pub-cache: true
-      - name: Gradle cache
+
+      - name: Restore and save Gradle cache
         uses: gradle/actions/setup-gradle@v4
-      - name: Fetch dependencies
+        with:
+          cache-read-only: false
+
+      - name: Fetch Flutter dependencies
         run: flutter pub get
-      - name: Build debug APK
-        run: flutter build apk --debug
-      - name: Verify APK
+
+      - name: Prepare Android release build
+        run: flutter build apk --release --config-only
+
+      # Gradle builds this directly because the Flutter APK copier assumes
+      # a signed app-release.apk and cannot locate app-release-unsigned.apk.
+      # This is the same approach verified by the earlier successful build.
+      - name: Assemble unsigned release APK
         shell: bash
         run: |
           set -euo pipefail
-          test -s build/app/outputs/flutter-apk/app-debug.apk
-          unzip -tqq build/app/outputs/flutter-apk/app-debug.apk
+          cd android
+          ./gradlew --no-daemon --build-cache :app:assembleRelease
+
+      - name: Verify and prepare unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=$(find build/app/outputs android/app/build/outputs -type f -name '*release-unsigned.apk' -print -quit 2>/dev/null || true)
+          if [[ -z "$apk" || ! -s "$apk" ]]; then
+            echo "::error::Unsigned APK missing after Gradle assembleRelease."
+            exit 1
+          fi
+          unzip -tqq "$apk"
+          unzip -p "$apk" AndroidManifest.xml > /dev/null
+          signer="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$signer" ]]; then
+            echo "::error::Android apksigner not found."
+            exit 1
+          fi
+          if "$signer" verify "$apk"; then
+            echo "::error::APK is signed; refusing to upload as unsigned."
+            exit 1
+          fi
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-debug.apk dist/AnimePlex-test-debug.apk
-      - name: Upload installable APK
+          cp "$apk" dist/AnimePlex-test-unsigned.apk
+          echo "Unsigned APK ready: $(du -h dist/AnimePlex-test-unsigned.apk | cut -f1)"
+
+      - name: Upload unsigned APK only
         uses: actions/upload-artifact@v4
         with:
-          name: AnimePlex-test-debug-${{ github.run_number }}
-          path: dist/AnimePlex-test-debug.apk
-          retention-days: 30
+          name: AnimePlex-test-unsigned-${{ github.run_number }}
+          path: dist/AnimePlex-test-unsigned.apk
           if-no-files-found: error
+          retention-days: 30
           compression-level: 0
