@@ -75,54 +75,11 @@ bool _authConnectionVerified = false;
 bool _hadStoredAuthSession = false;
 String? _expectedAuthUserId;
 
+/// The AnimePlex build uses its own Supabase Auth project for login/signup.
+ /// Do not consume the old Zangetsu VPS routing manifest or cached issuer:
+ /// it can carry a different API key/authority and override this project.
 Future<AuthRouteDecision> _selectLaunchAuthRoute() async {
-  // Explicit build overrides are for staging and remain authoritative.
-  if (const bool.hasEnvironment('SUPABASE_URL')) {
-    return const AuthRouteDecision(AuthRoute.cloud, changed: false);
-  }
-  while (true) {
-    final client = http.Client();
-    try {
-      return await AuthRouteResolver(
-        preferences: await SharedPreferences.getInstance(),
-        client: client,
-      ).resolve();
-    } catch (_) {
-      // An unreadable routing cache must never silently select the old authority.
-      final retry = Completer<void>();
-      runApp(
-        MaterialApp(
-          theme: ThemeData.dark(useMaterial3: true),
-          home: Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Connection settings unavailable'),
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Connect to the internet and try again.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  FilledButton(
-                    onPressed: () {
-                      if (!retry.isCompleted) retry.complete();
-                    },
-                    child: const Text('Try again'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-      await retry.future;
-    } finally {
-      client.close();
-    }
-  }
+  return const AuthRouteDecision(AuthRoute.cloud, changed: false);
 }
 
 Future<bool> _verifyLaunchAuthConnection() async {
