@@ -5,6 +5,8 @@ import worker from './src/index.js';
 const jwksUrl =
   'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
 const issuer = 'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1';
+const animeplexIssuer = 'https://iwiujqjipotwvigvaaid.supabase.co/auth/v1';
+const animeplexJwksUrl = animeplexIssuer + '/.well-known/jwks.json';
 const userId = '12000000-0000-4000-8000-000000000001';
 const maxBytes = 1024 * 1024;
 const encoder = new TextEncoder();
@@ -20,7 +22,7 @@ publicJwk.alg = 'ES256';
 
 before(() => {
   globalThis.fetch = async (input, init) => {
-    if (String(input) === jwksUrl) {
+    if (String(input) === jwksUrl || String(input) === animeplexJwksUrl) {
       return new Response(JSON.stringify({ keys: [publicJwk] }), {
         headers: { 'content-type': 'application/json' },
       });
@@ -165,6 +167,26 @@ test('accepts a valid Supabase ES256 user token and stores a small image', async
   assert.equal(env.writes.length, 1);
   assert.match(env.writes[0][0], new RegExp(`^avatars/${userId}/`));
   assert.equal(env.writes[0][1].byteLength, 3);
+});
+
+test('accepts new AnimePlex ES256 issuer without breaking older user tokens', async () => {
+  const env = environment();
+  const response = await worker.fetch(
+    requestFor(await token({ claims: { iss: animeplexIssuer } }), jpegBytes()),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(env.writes.length, 1);
+});
+
+test('rejects anonymous AnimePlex sign-in for avatar storage', async () => {
+  const env = environment();
+  const response = await worker.fetch(
+    requestFor(await token({ claims: { iss: animeplexIssuer, is_anonymous: true } }), jpegBytes()),
+    env,
+  );
+  assert.equal(response.status, 401);
+  assert.equal(env.writes.length, 0);
 });
 
 test('deletes only an authenticated user’s avatar object', async () => {
