@@ -1,0 +1,25 @@
+name: AnimePlex Cloudflare Sync CI
+on:
+  push:
+    branches: [test2]
+    paths:
+      - "cloudflare/animeplex-sync/**"
+      - ".github/workflows/animeplex-cloudflare-sync-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Cloudflare Worker API contracts
+        run: node --test cloudflare/animeplex-sync/test/worker.test.mjs
+      - name: Validate Cloudflare Worker syntax
+        run: node --check cloudflare/animeplex-sync/src/index.mjs
