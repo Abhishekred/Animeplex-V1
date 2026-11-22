@@ -294,12 +294,21 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
         );
       return;
     }
-    final ok = await context.read<AuthCubit>().signUp(
+    final auth = context.read<AuthCubit>();
+    final ok = await auth.signUp(
       _name.text.trim(),
       _email.text.trim(),
       _password.text,
     );
-    if (ok && context.mounted) Navigator.of(context).pop();
+    if (!ok || !context.mounted) return;
+    if (!auth.state.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(
+          'Check your email to confirm your account, then log in.',
+        )),
+      );
+    }
+    Navigator.of(context).pop();
   }
 
   InputDecoration _fieldDecoration(String hint, IconData icon) =>
