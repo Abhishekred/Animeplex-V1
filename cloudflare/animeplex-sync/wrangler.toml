@@ -1,0 +1,24 @@
+name = "animeplex-sync"
+main = "src/index.mjs"
+compatibility_date = "2026-11-20"
+workers_dev = true
+
+# Public client configuration only. NEVER put a service_role or secret API key here.
+[vars]
+SUPABASE_URL = "https://iwiujqjipotwvigvaaid.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_A436wPL9-Bfc6mg4dtUkQQ_2WLkfY9t"
+
+# Same per-user policy as the VPS KLIPY/Stremio proxy (120 requests/min).
+# Counters are per Cloudflare location and approximate, unlike a central database.
+[[ratelimits]]
+name = "USER_LIMITER"
+namespace_id = "14701"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+# Required worker secrets (set in the Cloudflare dashboard / wrangler secret put):
+# KLIPY_API_KEY       = existing KLIPY server API key
+# STREMIO_AES256_KEY  = ORIGINAL VPS stremio_key, base64-encoded 32 bytes.
+# Do NOT generate a new Stremio key: old encrypted configurations would not decrypt.
