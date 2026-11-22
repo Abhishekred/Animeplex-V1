@@ -29,15 +29,16 @@ const MAX_BYTES = 1_000_000;
  *  there is otherwise no way to tell from outside. */
 const BUILD = 'ctx-6';
 
-/** Supabase JWKS endpoint (ES256, P-256). Cached in a module global;
- *  refetched only when the token's `kid` misses the cache. */
-const JWKS_URL =
-  'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
-const JWT_ISSUER = `${new URL(JWKS_URL).origin}/auth/v1`;
+/** Only these known Supabase issuers can authorize old and AnimePlex sessions.
+ *  Keep old-device compatibility during migration, without trusting arbitrary issuers. */
+const JWT_ISSUERS = new Set([
+  'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1',
+  'https://iwiujqjipotwvigvaaid.supabase.co/auth/v1',
+]);
 const AVATAR_MAX_BYTES = 1024 * 1024;
 const AVATAR_GIF_MAX_DIMENSION = 512;
 const AVATAR_GIF_MAX_FRAMES = 60;
-let CACHED_JWKS = null;
+const CACHED_JWKS = new Map();
 
 /** Long enough to still have the log when someone gets round to mentioning it,
  *  short enough that nothing accumulates. KV expires these itself. */
@@ -259,17 +260,19 @@ function json(data, status = 200) {
   });
 }
 
-async function getJwk(kid) {
-  const hit =
-    CACHED_JWKS &&
-    Array.isArray(CACHED_JWKS.keys) &&
-    CACHED_JWKS.keys.find((k) => k.kid === kid);
+async function getJwk(kid, issuer) {
+  if (!JWT_ISSUERS.has(issuer)) return null;
+  const cached = CACHED_JWKS.get(issuer);
+  const hit = cached && Array.isArray(cached.keys)
+    ? cached.keys.find((k) => k.kid === kid) : null;
   if (hit) return hit;
-  const res = await fetch(JWKS_URL);
+  const res = await fetch(issuer + '/.well-known/jwks.json',
+    { redirect: 'manual' });
   if (!res.ok) return null;
-  CACHED_JWKS = await res.json();
-  const keys = (CACHED_JWKS && CACHED_JWKS.keys) || [];
-  return keys.find((k) => k.kid === kid) || null;
+  const keys = await res.json();
+  if (!keys || !Array.isArray(keys.keys)) return null;
+  CACHED_JWKS.set(issuer, keys);
+  return keys.keys.find((k) => k.kid === kid) || null;
 }
 
 async function readBodyUpTo(request, maxBytes) {
@@ -448,7 +451,11 @@ async function verifyAppUser(request, env) {
     ) {
       return null;
     }
-    const jwk = await getJwk(decodedHeader.kid);
+    // An unverified claim selects only from the hard-coded allowlist.
+    // The selected issuer's JWKS must still verify the actual signature.
+    const expectedIssuer = b64urlToJson(p).iss;
+    if (!JWT_ISSUERS.has(expectedIssuer)) return null;
+    const jwk = await getJwk(decodedHeader.kid, expectedIssuer);
     if (!jwk || (jwk.alg && jwk.alg !== decodedHeader.alg)) return null;
     const key = await crypto.subtle.importKey(
       'jwk',
@@ -472,7 +479,8 @@ async function verifyAppUser(request, env) {
     if (
       !Number.isFinite(payload.exp) ||
       payload.exp <= now ||
-      payload.iss !== JWT_ISSUER ||
+      payload.iss !== expectedIssuer ||
+      payload.is_anonymous === true ||
       (audience !== 'authenticated' &&
         !(Array.isArray(audience) && audience.includes('authenticated'))) ||
       payload.role !== 'authenticated' ||
