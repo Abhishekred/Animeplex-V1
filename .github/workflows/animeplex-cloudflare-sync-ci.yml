@@ -28,3 +28,28 @@ jobs:
         run: node --test cloudflare/log-intake/avatar_slot.test.mjs
       - name: Check avatar intake Worker syntax
         run: node --check cloudflare/log-intake/src/index.js
+      - name: Verify live Cloudflare staging health and fail-closed data access
+        run: |
+          node --input-type=module - <<'NODE'
+          import assert from 'node:assert/strict';
+          const root = 'https://animeplex-sync.ttest.workers.dev';
+          async function probe(path) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try { return await fetch(root + path, {signal: AbortSignal.timeout(12000)}); }
+              catch(error) { if (attempt === 2) throw error; await new Promise(r => setTimeout(r, 3000)); }
+            }
+          }
+          const health = await probe('/health');
+          assert.equal(health.status, 200, 'staging /health should return HTTP 200');
+          const status = await health.json();
+          assert.equal(status.ok, true);
+          assert.equal(status.backend, 'animeplex-supabase');
+          assert.equal(status.services.data, true);
+          assert.equal(status.services.rateLimit, true);
+          console.log('Cloudflare staging health is live', status.services);
+          const denied = await probe('/mylist');
+          assert.equal(denied.status, 401, 'anonymous My List must not be accessible');
+          const unknown = await probe('/auth/v1/admin');
+          assert.equal(unknown.status, 404, 'admin auth route must not be exposed');
+          console.log('Anonymous access and disallowed paths blocked.');
+          NODE
