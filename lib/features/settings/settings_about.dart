@@ -14,7 +14,7 @@ class AboutSettingsScreen extends StatefulWidget {
 }
 
 class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
-  static const String _websiteUrl = 'https://abhixtinku.online/';
+  static const String _websiteUrl = 'https://Abhishek.dpdns.org/';
   static const String _instagramUrl = 'https://www.instagram.com/animeplexofficial?hvrq=MTR3OWY4NjVqNGhheg==';
 
   final UpdateService _updateService = UpdateService();
@@ -55,7 +55,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
               SettingsTile(
                 icon: Icons.language_rounded,
                 title: context.l10n.website,
-                subtitle: 'abhixtinku.online',
+                subtitle: 'Abhishek.dpdns.org',
                 onTap: () => _open(_websiteUrl),
               ),
               SettingsTile(
@@ -188,7 +188,7 @@ class _DeveloperRow extends StatelessWidget {
               children: [
                 const TeamAvatar(
                   url: 'https://abhixtinku.online/dev.png',
-                  name: 'Spyou',
+                  name: 'Abhishek',
                   size: 46,
                 ),
                 const SizedBox(width: 14),
@@ -197,7 +197,7 @@ class _DeveloperRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Spyou',
+                        'Abhishek',
                         style: AppText.headline.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
