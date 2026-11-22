@@ -3,17 +3,17 @@ class Environment {
   // Public Supabase configuration. Override for staging builds with --dart-define.
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co',
+    defaultValue: 'https://iwiujqjipotwvigvaaid.supabase.co',
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw',
+        'sb_publishable_A436wPL9-Bfc6mg4dtUkQQ_2WLkfY9t',
   );
 
-  // Keep saved sessions when the auth host changes.
+  // Separate AnimePlex Auth sessions from the legacy project's persisted tokens.
   static const String supabaseSessionStorageKey =
-      'sb-eogwzrlfoercfwcfwlmv-auth-token';
+      'sb-iwiujqjipotwvigvaaid-auth-token';
 
   // Supabase issues auth tokens; all app cloud-data sync uses the VPS.
   static const String vpsSyncUrl = String.fromEnvironment(
