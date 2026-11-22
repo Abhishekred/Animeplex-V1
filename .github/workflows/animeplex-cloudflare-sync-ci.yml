@@ -4,6 +4,7 @@ on:
     branches: [test2]
     paths:
       - "cloudflare/animeplex-sync/**"
+      - "cloudflare/log-intake/**"
       - ".github/workflows/animeplex-cloudflare-sync-ci.yml"
   workflow_dispatch:
 
@@ -23,3 +24,7 @@ jobs:
         run: node --test cloudflare/animeplex-sync/test/worker.test.mjs
       - name: Validate Cloudflare Worker syntax
         run: node --check cloudflare/animeplex-sync/src/index.mjs
+      - name: Verify avatar intake supports the AnimePlex issuer
+        run: node --test cloudflare/log-intake/avatar_slot.test.mjs
+      - name: Check avatar intake Worker syntax
+        run: node --check cloudflare/log-intake/src/index.js
