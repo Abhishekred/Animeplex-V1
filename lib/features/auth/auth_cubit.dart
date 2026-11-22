@@ -154,7 +154,7 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// Hive box that caches the signed-in user (opened in [initDependencies]).
-  static const String cacheBoxName = 'auth_cache';
+  static const String cacheBoxName = 'auth_cache_animeplex_v1';
   static const String _userKey = 'user';
 
   Box? get _cache =>
@@ -396,16 +396,23 @@ class AuthCubit extends Cubit<AuthState> {
   Future<bool> signUp(String name, String email, String password) async {
     emit(state.copyWith(busy: true, error: () => null));
     try {
-      await _sb.client.auth.signUp(
+      final result = await _sb.client.auth.signUp(
         email: email,
         password: password,
         data: {'name': name},
       );
-      final authUser = _sb.client.auth.currentUser;
-      if (authUser == null) {
+      if (result.user == null) {
         emit(state.copyWith(busy: false, error: () => 'Sign up failed'));
         return false;
       }
+      // When Confirm email is enabled, Supabase creates the account but
+      // returns no session. Show confirmation instructions instead of falsely
+      // reporting a failed signup or attempting authenticated profile writes.
+      if (result.session == null) {
+        emit(state.copyWith(busy: false, error: () => null));
+        return true;
+      }
+      final authUser = result.user!;
       await _sb.client.from('profiles').upsert({
         'id': authUser.id,
         'display_name': name,
