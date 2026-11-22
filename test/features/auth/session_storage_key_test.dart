@@ -6,10 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:watch_app/core/environment.dart';
 
-// supabase_flutter derives the default persisted-session key from the FIRST
-// hostname segment of the API URL (see its initialize()); changing the URL
-// would therefore abandon every installed user's saved login. These tests pin
-// the contract that keeps the Cloud-era storage key across the URL switch.
+// Store AnimePlex sessions under the new project's own key. Old-project
+// access/refresh tokens must never be restored against the new Auth issuer.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -17,18 +15,14 @@ void main() {
   group('pinned session storage key', () {
     test('matches the SDK derivation for the current Cloud URL', () {
       final derived =
-          'sb-${Uri.parse('https://eogwzrlfoercfwcfwlmv.supabase.co').host.split('.').first}-auth-token';
+          'sb-${Uri.parse('https://iwiujqjipotwvigvaaid.supabase.co').host.split('.').first}-auth-token';
       expect(Environment.supabaseSessionStorageKey, derived);
     });
 
-    test('differs from what a destination URL would derive', () {
-      // Documents the hazard the pin prevents: without the explicit
-      // localStorage override, sb.zangetsu.online derives a different key
-      // and the saved session would be invisible to the app.
-      const destinationUrl = 'https://sb.zangetsu.online';
-      final destinationDerived =
-          'sb-${Uri.parse(destinationUrl).host.split('.').first}-auth-token';
-      expect(destinationDerived, isNot(Environment.supabaseSessionStorageKey));
+    test('differs from the previous auth project session key', () {
+      // A previous Zangetsu login must not be adopted by AnimePlex Auth.
+      const oldSessionKey = 'sb-eogwzrlfoercfwcfwlmv-auth-token';
+      expect(Environment.supabaseSessionStorageKey, isNot(oldSessionKey));
     });
   });
 
@@ -84,7 +78,7 @@ void main() {
             'Both Supabase.initialize calls (boot + _retrySupabaseInit) '
             'must override the session storage key; if an initializer '
             'loses the override, a URL switch would silently strand the '
-            'installed session.',
+            'new project session.',
       );
     });
   });
