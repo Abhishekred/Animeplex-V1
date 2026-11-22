@@ -46,10 +46,19 @@ jobs:
           assert.equal(status.backend, 'animeplex-supabase');
           assert.equal(status.services.data, true);
           assert.equal(status.services.rateLimit, true);
+          assert.equal(status.services.klipy, true, 'KLIPY secret must be configured');
           console.log('Cloudflare staging health is live', status.services);
           const denied = await probe('/mylist');
           assert.equal(denied.status, 401, 'anonymous My List must not be accessible');
+          const deniedHistory = await probe('/history');
+          assert.equal(deniedHistory.status, 401, 'anonymous History must not be accessible');
+          const deniedProfiles = await probe('/viewer_profiles');
+          assert.equal(deniedProfiles.status, 401, 'anonymous Viewer Profiles must not be accessible');
+          const deniedGifs = await probe('/klipy/v1/gifs/search?q=anime');
+          assert.equal(deniedGifs.status, 401, 'anonymous GIF search must not be accessible');
+          const badGif = await probe('/klipy/v1/gifs/search?q=x&q=y');
+          assert.equal(badGif.status, 400, 'malformed GIF searches must be rejected');
           const unknown = await probe('/auth/v1/admin');
           assert.equal(unknown.status, 404, 'admin auth route must not be exposed');
-          console.log('Anonymous access and disallowed paths blocked.');
+          console.log('Anonymous My List, History, Profiles, GIFs blocked; malformed search rejected.');
           NODE
