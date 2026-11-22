@@ -288,6 +288,17 @@ class _SignupScreenState extends State<SignupScreen> {
       _password.text,
     );
     if (!ok) return; // error already surfaced via state
+    if (!auth.state.isLoggedIn) {
+      // Signup was accepted, but email confirmation is required first.
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(
+          'Check your email to confirm your account, then log in.',
+        )),
+      );
+      Navigator.of(context).pop();
+      return;
+    }
     // Session is live now — upload the chosen photo before leaving.
     if (_avatarPath != null) await auth.updateAvatar(_avatarPath!);
     if (context.mounted) Navigator.of(context).pop();
