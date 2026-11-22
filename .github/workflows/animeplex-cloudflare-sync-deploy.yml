@@ -1,0 +1,28 @@
+name: Deploy AnimePlex Cloudflare Sync (manual)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Run tests and deploy staged sync Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Worker tests before any deploy
+        run: |
+          node --test cloudflare/animeplex-sync/test/worker.test.mjs
+          node --test cloudflare/log-intake/avatar_slot.test.mjs
+      - name: Deploy to your Cloudflare account
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare/animeplex-sync
+          command: deploy
