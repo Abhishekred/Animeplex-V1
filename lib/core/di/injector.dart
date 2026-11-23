@@ -79,6 +79,7 @@ import '../zmode/metadata_repository.dart';
 import '../zmode/source_score_store.dart';
 import '../zmode/zmode_module.dart';
 import '../zmode/zmode_ids.dart';
+import '../zmode/source_order_prefs.dart';
 import '../zmode/zmode_prefs.dart';
 import '../theme/app_font_prefs.dart';
 import '../theme/theme_controller.dart';
