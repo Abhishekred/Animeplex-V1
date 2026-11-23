@@ -5,13 +5,14 @@ class VoiceSearchArtwork {
 
   static const urls = [
     'https://media.tenor.com/EjowFmPUajMAAAAj/death-note-l-lawliet.gif',
-    'https://avatars.zangetsu.online/voice-search/zoro-hearing-bf88c2298404.gif',
   ];
 
   final Random _random;
   String? _previous;
 
   String next() {
+    // A single trusted source must not trigger Random.nextInt(0).
+    if (urls.length == 1) return urls.first;
     final choices = urls
         .where((url) => url != _previous)
         .toList(growable: false);
