@@ -50,7 +50,7 @@ jobs:
 
       - name: Verify AnimePlex-only network routing
         run: |
-          flutter test test/core/environment_test.dart test/core/share/pair_link_test.dart test/features/auth/auth_route_test.dart test/core/profiles/profile_picker_artwork_test.dart test/core/privacy/old_vps_isolation_test.dart test/core/admin/managed_provider_sync_test.dart
+          flutter test test/core/environment_test.dart test/core/share/pair_link_test.dart test/features/auth/auth_route_test.dart test/core/profiles/profile_picker_artwork_test.dart test/core/privacy/old_vps_isolation_test.dart test/core/admin/managed_provider_sync_test.dart test/core/ui/nav_prefs_test.dart test/features/settings/settings_screen_test.dart
 
       - name: Prepare Android release build
         run: flutter build apk --release --config-only

@@ -13,6 +13,11 @@ import 'package:watch_app/core/ui/nav_prefs.dart';
 List<DockTab> sanitized(List<DockTab> tabs) => NavPrefs.sanitizeForTest(tabs);
 
 void main() {
+  test('formerly Sources dock destination displays Anime', () {
+    expect(DockTab.sources.label, 'Anime');
+    expect(DockTab.sources.name, 'sources'); // keep saved dock ID stable
+  });
+
   group('NavPrefs invariants', () {
     test('the pinned tab is added back when missing', () {
       final out = sanitized([DockTab.home, DockTab.downloads, DockTab.myList]);

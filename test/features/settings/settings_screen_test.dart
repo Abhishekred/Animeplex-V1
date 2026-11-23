@@ -202,7 +202,6 @@ void main() {
       // Each section is now a single drill-down row.
       for (final section in const [
         'Account & sync',
-        'Sources',
         'Playback',
         'Downloads',
         'Interface',
@@ -256,20 +255,16 @@ void main() {
     },
   );
 
-  testWidgets('tapping a category drills into its settings', (tester) async {
+  testWidgets('Sources category and its controls are hidden from Settings', (tester) async {
     await _pumpSettings(tester);
 
-    await tester.tap(find.text('Sources'));
-    await tester.pumpAndSettle();
-
-    // The Sources section's tiles are now on screen.
-    for (final t in const ['Providers', 'Source health']) {
-      expect(find.text(t), findsOneWidget, reason: 'tile: $t');
+    for (final label in const ['Sources', 'Providers', 'Source health',
+      'Source updates', 'Auto-update extensions']) {
+      expect(find.text(label), findsNothing, reason: 'hidden setting: $label');
     }
-    expect(find.text('Active source'), findsNothing);
-    // Other sections' rows are gone (we're on the Sources sub-page).
-    expect(find.text('Downloads'), findsNothing);
-    expect(find.text('About'), findsNothing);
+    // Other categories remain discoverable and unchanged.
+    expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('About'), findsOneWidget);
   });
 
   test(
