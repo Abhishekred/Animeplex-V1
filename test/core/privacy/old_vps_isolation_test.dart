@@ -6,7 +6,8 @@ void main() {
   test('no application source points to any legacy VPS hostname', () {
     final leaked = <String>[];
     final legacyHost = RegExp(
-      r'(?i)(?:https?://)?(?:[a-z0-9-]+\.)?zangetsu\.online',
+      r'(?:https?://)?(?:[a-z0-9-]+\.)?zangetsu\.online',
+      caseSensitive: false,
     );
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
