@@ -11,6 +11,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../search/browse_sources_screen.dart';
 import '../home/home_catalogue_prefs.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -274,8 +275,40 @@ class _RootShellState extends State<RootShell>
     );
   }
 
+  /// The tab label indicates the *next* catalogue: Anime -> Movie -> Anime.
+  /// Reuse the active/default provider chosen by app/admin when opening Movie.
+  bool _switchingAnimeMovie = false;
+
+  Future<void> _toggleAnimeMovieCatalogue() async {
+    if (_switchingAnimeMovie) return;
+    _switchingAnimeMovie = true;
+    try {
+      if (HomeCataloguePrefs.catalogueKind == HomeCatalogueKind.metadata) {
+        if (sl.isRegistered<ContentModeCubit>()) {
+          await sl<ContentModeCubit>().setMode(ContentMode.anime);
+        }
+        await ZModePrefs.setStreamKind(StreamKind.movie);
+        await ZModePrefs.setEnabled(true);
+        if (sl.isRegistered<ActiveSourceCubit>()) {
+          final id = sl<ActiveSourceCubit>().state;
+          if (id.isNotEmpty) {
+            await HomeCataloguePrefs.setSourceIdFor(ContentMode.anime, id);
+          }
+        }
+        await HomeCataloguePrefs.setCatalogue(
+          ContentMode.anime,
+          HomeCatalogueKind.source,
+        );
+      } else {
+        await _selectAnimeCatalogue();
+      }
+    } finally {
+      _switchingAnimeMovie = false;
+    }
+  }
+
   void _onTabSelected(DockTab tab) {
-    if (tab == DockTab.sources) unawaited(_selectAnimeCatalogue());
+    if (tab == DockTab.sources) unawaited(_toggleAnimeMovieCatalogue());
     if (tab == DockTab.profile) {
       final now = DateTime.now();
       final lastTap = _lastProfileTap;
@@ -547,6 +580,9 @@ class _RootShellState extends State<RootShell>
                                 glassQuality: _navPrefs.glassQuality,
                                 glassBlurEnabled: _navPrefs.glassBlurEnabled,
                                 onSelected: _onTabSelected,
+                                movieToggleNext:
+                                    HomeCataloguePrefs.catalogueKind ==
+                                    HomeCatalogueKind.metadata,
                                 modesEnabled: modesEnabled,
                                 onModeSelected: (mode, kind) async {
                                   await ZModePrefs.setStreamKind(kind);
@@ -562,6 +598,9 @@ class _RootShellState extends State<RootShell>
                               tabs: tabs,
                               active: _tab,
                               onSelected: _onTabSelected,
+                              movieToggleNext:
+                                  HomeCataloguePrefs.catalogueKind ==
+                                  HomeCatalogueKind.metadata,
                               centre: modesEnabled
                                   ? BlocBuilder<ContentModeCubit, ContentMode>(
                                       bloc: sl<ContentModeCubit>(),
@@ -604,6 +643,7 @@ class _LiquidNavDock extends StatelessWidget {
     required this.glassQuality,
     required this.glassBlurEnabled,
     required this.onSelected,
+    required this.movieToggleNext,
     required this.modesEnabled,
     required this.onModeSelected,
   });
@@ -616,6 +656,7 @@ class _LiquidNavDock extends StatelessWidget {
   final GlassQuality glassQuality;
   final bool glassBlurEnabled;
   final ValueChanged<DockTab> onSelected;
+  final bool movieToggleNext;
   final bool modesEnabled;
   final void Function(ContentMode, StreamKind) onModeSelected;
 
@@ -647,6 +688,13 @@ class _LiquidNavDock extends StatelessWidget {
         );
       }
       return Icon(Icons.person_outline_rounded, color: color);
+    }
+    if (tab == DockTab.sources && movieToggleNext) {
+      return Icon(
+        selected ? Icons.local_movies_rounded : Icons.local_movies_outlined,
+        color: color,
+        size: 23,
+      );
     }
     final glyph = dockGlyphFor(tab);
     if (glyph != null) {
@@ -692,8 +740,12 @@ class _LiquidNavDock extends StatelessWidget {
                   child: _icon(tab, selected: true),
                 )
               : _icon(tab, selected: true),
-          label: tab.localizedLabel(context),
-          semanticLabel: tab.localizedLabel(context),
+          label: tab == DockTab.sources && movieToggleNext
+              ? 'Movie'
+              : tab.localizedLabel(context),
+          semanticLabel: tab == DockTab.sources && movieToggleNext
+              ? 'Movie'
+              : tab.localizedLabel(context),
         ),
     ];
     return ConstrainedBox(
@@ -876,6 +928,7 @@ class _FloatingDock extends StatelessWidget {
     required this.tabs,
     required this.active,
     required this.onSelected,
+    required this.movieToggleNext,
     this.collapsed = false,
     this.centre,
   });
@@ -890,6 +943,7 @@ class _FloatingDock extends StatelessWidget {
   final List<DockTab> tabs;
   final DockTab active;
   final ValueChanged<DockTab> onSelected;
+  final bool movieToggleNext;
 
   /// The Z Mode centre button. Not a [DockTab] — it isn't reorderable,
   /// hideable, or counted toward the tab limit. Null when Z Mode is off.
@@ -904,9 +958,13 @@ class _FloatingDock extends StatelessWidget {
         )
       : _DockItem(
           labelOpacity: labels,
-          label: t.localizedLabel(context),
+          label: t == DockTab.sources && movieToggleNext
+              ? 'Movie'
+              : t.localizedLabel(context),
           glyph: dockGlyphFor(t),
-          icon: _iconFor(t),
+          icon: t == DockTab.sources && movieToggleNext
+              ? (Icons.local_movies_outlined, Icons.local_movies_rounded)
+              : _iconFor(t),
           selected: active == t,
           onTap: () => onSelected(t),
         );

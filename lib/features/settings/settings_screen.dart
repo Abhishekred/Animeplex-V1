@@ -27,6 +27,8 @@ import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../player/tv_exo_spike_screen.dart';
 import '../../core/di/injector.dart';
+import '../../core/admin/sources_access_permission.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/my_list.dart';
@@ -110,7 +112,49 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
+  bool _sourcesAccessAllowed = false;
+  String? _sourcesAccessAccountId;
+
+  bool get _canShowSources => SourcesAccessPermission.canShow(
+    currentUserId: sl.isRegistered<SupabaseService>()
+        ? sl<SupabaseService>().currentUserId()
+        : null,
+    verifiedUserId: _sourcesAccessAccountId,
+    granted: _sourcesAccessAllowed,
+  );
+
+  Future<void> _refreshSourcesAccess() async {
+    final userId = sl.isRegistered<SupabaseService>()
+        ? sl<SupabaseService>().currentUserId()
+        : null;
+    if (mounted && _sourcesAccessAccountId != userId) {
+      setState(() {
+        _sourcesAccessAllowed = false;
+        _sourcesAccessAccountId = null;
+      });
+    }
+    final allowed = await SourcesAccessPermission.fetchForUser(userId);
+    if (!mounted) return;
+    if (userId != (sl.isRegistered<SupabaseService>()
+        ? sl<SupabaseService>().currentUserId()
+        : null)) return;
+    setState(() {
+      _sourcesAccessAccountId = userId;
+      _sourcesAccessAllowed = allowed;
+    });
+    if (!allowed && _settingsCubit.state.openSection == SettingsSection.sources) {
+      _settingsCubit.back();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshSourcesAccess());
+    }
+  }
+
   // Opt-in in-app DNS-over-HTTPS for CloudStream sources (Android-only). Loaded
   // from native on open; CsDns.off (default) until then.
   int _dnsChoice = CsDns.off;
@@ -138,6 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshSourcesAccess());
     MetadataProviderPrefs.revision.addListener(_onProviderChanged);
     if (Platform.isAndroid) {
       CsDns.get().then((c) {
@@ -148,6 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     MetadataProviderPrefs.revision.removeListener(_onProviderChanged);
     _searchCtrl.dispose();
     _settingsCubit.close();
@@ -1348,7 +1395,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'check updates upgrade latest beta prerelease support donate coffee',
       onTap: () => _push(const AboutSettingsScreen()),
     ),
-  ].where((entry) => entry.section != SettingsSection.sources).toList();
+  ].where((entry) =>
+      entry.section != SettingsSection.sources || _canShowSources
+  ).toList();
 
   @override
   Widget build(BuildContext context) {
