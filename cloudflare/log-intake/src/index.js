@@ -29,10 +29,8 @@ const MAX_BYTES = 1_000_000;
  *  there is otherwise no way to tell from outside. */
 const BUILD = 'animeplex-2026-11-23';
 
-/** Only these known Supabase issuers can authorize old and AnimePlex sessions.
- *  Keep old-device compatibility during migration, without trusting arbitrary issuers. */
+/** Fresh AnimePlex backend: only the new Supabase project can authorize uploads. */
 const JWT_ISSUERS = new Set([
-  'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1',
   'https://iwiujqjipotwvigvaaid.supabase.co/auth/v1',
 ]);
 const AVATAR_MAX_BYTES = 1024 * 1024;

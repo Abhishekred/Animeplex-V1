@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import worker from './src/index.js';
 
-const jwksUrl =
-  'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1/.well-known/jwks.json';
-const issuer = 'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1';
+const oldIssuer = 'https://eogwzrlfoercfwcfwlmv.supabase.co/auth/v1';
+const jwksUrl = oldIssuer + '/.well-known/jwks.json';
+const issuer = 'https://iwiujqjipotwvigvaaid.supabase.co/auth/v1';
 const animeplexIssuer = 'https://iwiujqjipotwvigvaaid.supabase.co/auth/v1';
 const animeplexJwksUrl = animeplexIssuer + '/.well-known/jwks.json';
 const userId = '12000000-0000-4000-8000-000000000001';
@@ -169,14 +169,14 @@ test('accepts a valid Supabase ES256 user token and stores a small image', async
   assert.equal(env.writes[0][1].byteLength, 3);
 });
 
-test('accepts new AnimePlex ES256 issuer without breaking older user tokens', async () => {
+test('rejects legacy Supabase tokens on the fresh AnimePlex avatar service', async () => {
   const env = environment();
   const response = await worker.fetch(
-    requestFor(await token({ claims: { iss: animeplexIssuer } }), jpegBytes()),
+    requestFor(await token({ claims: { iss: oldIssuer } }), jpegBytes()),
     env,
   );
-  assert.equal(response.status, 200);
-  assert.equal(env.writes.length, 1);
+  assert.equal(response.status, 401);
+  assert.equal(env.writes.length, 0);
 });
 
 test('rejects anonymous AnimePlex sign-in for avatar storage', async () => {
