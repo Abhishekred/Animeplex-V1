@@ -5,6 +5,7 @@ on:
     paths:
       - "cloudflare/animeplex-sync/**"
       - "cloudflare/log-intake/**"
+      - "cloudflare/animeplex-backup/**"
       - ".github/workflows/animeplex-cloudflare-sync-ci.yml"
   workflow_dispatch:
 
@@ -22,6 +23,8 @@ jobs:
           node-version: '22'
       - name: Verify Cloudflare Worker API contracts
         run: node --test cloudflare/animeplex-sync/test/worker.test.mjs
+      - name: Verify private backup Worker request protection
+        run: node --test cloudflare/animeplex-backup/test/worker.test.mjs
       - name: Validate Cloudflare Worker syntax
         run: node --check cloudflare/animeplex-sync/src/index.mjs
       - name: Verify avatar intake supports the AnimePlex issuer
@@ -61,4 +64,33 @@ jobs:
           const unknown = await probe('/auth/v1/admin');
           assert.equal(unknown.status, 404, 'admin auth route must not be exposed');
           console.log('Anonymous My List, History, Profiles, GIFs blocked; malformed search rejected.');
+          NODE
+
+      - name: Verify live AnimePlex avatar/log and backup Workers
+        run: |
+          node --input-type=module - <<'NODE'
+          import assert from 'node:assert/strict';
+          async function check(url, options) {
+            const r = await fetch(url, { ...options, signal: AbortSignal.timeout(12000) });
+            return r;
+          }
+          const logRoot = 'https://animeplex-logs.ttest.workers.dev';
+          const backupRoot = 'https://animeplex-backup.ttest.workers.dev';
+          const logs = await check(logRoot + '/health');
+          assert.equal(logs.status, 200, 'avatar/log Worker must be available');
+          const logHealth = await logs.json();
+          assert.equal(logHealth.ok, true);
+          assert.equal(logHealth.build, 'animeplex-2026-11-23');
+          const unauthorizedAvatar = await check(logRoot + '/v1/avatar-slot', { method: 'POST' });
+          assert.equal(unauthorizedAvatar.status, 401);
+          const backups = await check(backupRoot + '/health');
+          assert.equal(backups.status, 200);
+          const backupHealth = await backups.json();
+          assert.equal(backupHealth.ok, true);
+          assert.equal(backupHealth.bucket, true);
+          const unauthorizedBackup = await check(backupRoot + '/v1/status');
+          assert.equal(unauthorizedBackup.status, 401);
+          console.log('Avatar/log and private R2 backup Workers live.');
+          console.log('Backup token set:', backupHealth.authenticated);
+          console.log('Discord notification:', logHealth.discord);
           NODE
