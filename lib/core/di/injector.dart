@@ -56,6 +56,7 @@ import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
 import '../provider/cf_clearance_store.dart';
 import '../provider/cloudstream_provider.dart';
+import '../admin/managed_provider_sync.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
 import '../share/open_link_service.dart';
@@ -1292,6 +1293,19 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       } catch (e) {
         // Network/download failures are retried at next launch, not fatal.
         debugPrint('[cloudstream] MovieBox first-run setup deferred: $e');
+      }
+      // Remote admin-managed provider entries are applied after installed
+      // plugins are loaded. The operation never blocks app startup.
+      try {
+        await ManagedProviderSync.apply(
+          manager: csManager,
+          supabase: sl<SupabaseService>(),
+          active: sl<ActiveSourceCubit>(),
+          orderPrefs: sl.isRegistered<SourceOrderPrefs>()
+              ? sl<SourceOrderPrefs>() : null,
+        );
+      } catch (e) {
+        debugPrint('[managed-providers] Offline or unavailable: $e');
       }
       // Honor a saved `cs:` active source that wasn't loaded yet at boot
       // (ActiveSourceCubit fell back to a JS source). reapplySaved only swaps
