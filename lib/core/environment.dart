@@ -15,10 +15,10 @@ class Environment {
   static const String supabaseSessionStorageKey =
       'sb-iwiujqjipotwvigvaaid-auth-token';
 
-  // Supabase issues auth tokens; all app cloud-data sync uses the VPS.
+  // Supabase issues auth tokens; signed-in cloud sync uses Cloudflare Workers.
   static const String vpsSyncUrl = String.fromEnvironment(
     'VPS_SYNC_URL',
-    defaultValue: 'https://sync.zangetsu.online',
+    defaultValue: 'https://animeplex-sync.ttest.workers.dev',
   );
 
   /// Password-reset landing page.

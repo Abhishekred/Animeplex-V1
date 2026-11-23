@@ -27,7 +27,7 @@ const MAX_BYTES = 1_000_000;
 /** Bumped by hand when the Worker changes, so `/health` can prove which code
  *  is actually serving. Cloudflare takes a while to roll a new version out and
  *  there is otherwise no way to tell from outside. */
-const BUILD = 'ctx-6';
+const BUILD = 'animeplex-2026-11-23';
 
 /** Only these known Supabase issuers can authorize old and AnimePlex sessions.
  *  Keep old-device compatibility during migration, without trusting arbitrary issuers. */

@@ -35,7 +35,7 @@ const String kDiscordInviteUrl = 'https://discord.gg/hey6vz9kg6';
 /// Only the public URL lives here. The Discord webhook stays on the Worker:
 /// this app is open source and its APK is public, so anything put in the app
 /// can be read straight back out of it.
-const String kLogIntakeUrl = 'https://zangetsu-logs.log-intake.workers.dev';
+const String kLogIntakeUrl = 'https://animeplex-logs.ttest.workers.dev';
 
 /// Public R2 manifest for the rotating profile-picker backdrops. The manifest
 /// contains up to three image filenames stored beside it in this bucket.

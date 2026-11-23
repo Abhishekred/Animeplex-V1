@@ -1,35 +1,21 @@
-name = "zangetsu-logs"
+name = "animeplex-logs"
 main = "src/index.js"
 compatibility_date = "2026-09-13"
+workers_dev = true
 
-# Reports are kept here for 30 days as a backup — the readable copy is the file
-# attached to the Discord message. KV rather than R2 on purpose: R2 needs a
-# payment method on file even on its free tier, and a 25KB log has no use for
-# R2's headroom.
-#
-# Create the namespace once, then paste the id it prints here:
-#   wrangler kv namespace create LOGS
+# Dedicated fresh AnimePlex resources; preserve the older Zangetsu deployment.
 [[kv_namespaces]]
 binding = "LOGS"
-id = "4cb9a82d2b7349cab0ce4c99de730c76"
+id = "ad4ed8d0acf54a589327be2a46890e5c"
 
-# DISCORD_WEBHOOK is a SECRET, not a var — it must never appear in this file,
-# which is committed to a public repo. Set it with:
-#   wrangler secret put DISCORD_WEBHOOK
-# Same for SUPABASE_JWT_SECRET (Supabase dashboard → Project Settings → API →
-# JWT Secret):
-#   wrangler secret put SUPABASE_JWT_SECRET
-
-# Profile photos live here (1 MiB cap, enforced in index.js).
-# Create once, then expose publicly (r2.dev domain or custom domain) and put
-# that URL in AVATAR_PUBLIC_BASE below:
-#   wrangler r2 bucket create zangetsu-avatars
 [[r2_buckets]]
 binding = "AVATARS"
-bucket_name = "zangetsu-avatars"
+bucket_name = "animeplex-avatars"
 
 [vars]
-PROFILE_LOCK_API_BASE = "https://sync.zangetsu.online"
-AVATAR_PUBLIC_BASE = "https://avatars.zangetsu.online"
-# Older saved profile URLs still need to be accepted for deletion.
-AVATAR_LEGACY_PUBLIC_BASE = "https://pub-a8b67f6edb404cb1b7545e19bc2b5b94.r2.dev"
+PROFILE_LOCK_API_BASE = "https://animeplex-sync.ttest.workers.dev"
+AVATAR_PUBLIC_BASE = "https://pub-31b012ff212e4f15934133826c1d9570.r2.dev"
+AVATAR_LEGACY_PUBLIC_BASE = "https://pub-31b012ff212e4f15934133826c1d9570.r2.dev"
+
+# Optional: set DISCORD_WEBHOOK directly as a Worker secret to enable
+# Discord notifications; logs are retained in LOGS even without it.
