@@ -11,7 +11,6 @@ class ProfilePickerArtwork {
 
   static const lastUrlKey = 'profile_picker_artwork_last_url';
   static const _maxImages = 3;
-  static const _legacyHost = 'pub-a8b67f6edb404cb1b7545e19bc2b5b94.r2.dev';
   static final _fileName = RegExp(
     r'^[a-zA-Z0-9_-]{1,64}\.(?:webp|png|jpe?g)$',
     caseSensitive: false,
@@ -28,8 +27,7 @@ class ProfilePickerArtwork {
     final uri = Uri.tryParse(raw);
     if (uri == null ||
         uri.scheme != 'https' ||
-        (uri.host != Uri.parse(kProfilePickerArtworkManifestUrl).host &&
-            uri.host != _legacyHost) ||
+        uri.host != Uri.parse(kProfilePickerArtworkManifestUrl).host ||
         uri.query.isNotEmpty ||
         uri.pathSegments.length != 2 ||
         uri.pathSegments.first != 'profile-picker' ||

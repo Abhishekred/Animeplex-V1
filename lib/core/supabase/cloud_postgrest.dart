@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 
 import 'supabase_service.dart';
 
-/// Sends app cloud-data table access to the VPS using a Supabase access token.
+/// Sends signed-in cloud-data requests to the AnimePlex Cloudflare Worker.
 class CloudPostgrest {
   CloudPostgrest(
     this._service, {
@@ -19,7 +19,7 @@ class CloudPostgrest {
   PostgrestQueryBuilder from(String table) {
     final vpsClient = _vpsClient;
     if (vpsClient == null) {
-      throw StateError('VPS cloud backend is not configured');
+      throw StateError('AnimePlex cloud backend is not configured');
     }
     final token =
         (_accessToken ??

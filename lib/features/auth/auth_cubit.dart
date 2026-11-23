@@ -441,8 +441,10 @@ class AuthCubit extends Cubit<AuthState> {
   /// it works while signed out. Returns null on success, or an error message.
   Future<String?> sendRecovery(String email) async {
     try {
-      await _sb.client.auth.resetPasswordForEmail(email);
-      return null;
+      // The legacy GoTrue Site URL can redirect reset tokens to the old VPS.
+      // Fail closed until the new Supabase redirect allowlist and an
+      // AnimePlex-owned recovery page are verified.
+      return 'Password reset is temporarily unavailable. Please contact support.';
     } on AuthException catch (e) {
       return e.message;
     } catch (_) {

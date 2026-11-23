@@ -1,46 +1,24 @@
 /// Public compile-time application settings.
 class Environment {
-  // Public Supabase configuration. Override for staging builds with --dart-define.
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://iwiujqjipotwvigvaaid.supabase.co',
-  );
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue:
-        'sb_publishable_A436wPL9-Bfc6mg4dtUkQQ_2WLkfY9t',
-  );
+  // Release endpoints are pinned: no build flag can point login to the old VPS.
+  static const String supabaseUrl =
+      'https://iwiujqjipotwvigvaaid.supabase.co';
+  static const String supabaseAnonKey =
+      'sb_publishable_A436wPL9-Bfc6mg4dtUkQQ_2WLkfY9t';
 
   // Separate AnimePlex Auth sessions from the legacy project's persisted tokens.
   static const String supabaseSessionStorageKey =
       'sb-iwiujqjipotwvigvaaid-auth-token';
 
-  // Supabase issues auth tokens; signed-in cloud sync uses Cloudflare Workers.
-  static const String vpsSyncUrl = String.fromEnvironment(
-    'VPS_SYNC_URL',
-    defaultValue: 'https://animeplex-sync.ttest.workers.dev',
-  );
+  // Account data goes only to our Cloudflare Worker. No VPS_SYNC_URL override.
+  static const String vpsSyncUrl = 'https://animeplex-sync.ttest.workers.dev';
 
-  /// Password-reset landing page.
-  /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
-  /// which points at this same page); kept for reference. Not used by the
-  /// Supabase AuthCubit, which calls `resetPasswordForEmail`.
-  static const String passwordResetUrl = 'https://zangetsu.online/';
-
-  /// Base of the Zangetsu website (landing + reset + the share "open" page).
-  static const String siteBaseUrl = 'https://zangetsu.online';
-
-  /// Public AnimePlex share landing page on Cloudflare Pages.
-  /// TV pairing and OAuth keep their existing Zangetsu configuration.
-  static const String siteOpenUrl = 'https://abhishek.dpdns.org/open/';
-
-  /// TV pairing page on the website. Used when someone opens a shared/https
-  /// pair link in a browser; the page can hand off to the app via
-  /// `zangetsu://pair`. App-facing TV QRs encode the deeplink directly.
+  // Owned release website; avoid legacy Zangetsu site for pairing/reset links.
+  static const String siteBaseUrl = 'https://abhishek.dpdns.org';
+  static const String passwordResetUrl = '$siteBaseUrl/reset-password/';
+  static const String siteOpenUrl = '$siteBaseUrl/open/';
   static const String sitePairUrl = '$siteBaseUrl/pair/';
 
-  /// AnimePlex shares use animeplex://open only.
-  /// Existing tracker OAuth and TV pairing keep their separate scheme.
   static const String openLinkScheme = 'animeplex';
   static const String openLinkHost = 'open';
   static const String pairLinkHost = 'pair';

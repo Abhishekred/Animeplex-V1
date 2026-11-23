@@ -79,6 +79,13 @@ String? _expectedAuthUserId;
  /// Do not consume the old Zangetsu VPS routing manifest or cached issuer:
  /// it can carry a different API key/authority and override this project.
 Future<AuthRouteDecision> _selectLaunchAuthRoute() async {
+  // Do not retain old VPS login routing on upgraded devices.
+  try {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(AuthRouteResolver.cacheKey);
+  } catch (_) {
+    // The cloud-only route is fixed even when preferences are unavailable.
+  }
   return const AuthRouteDecision(AuthRoute.cloud, changed: false);
 }
 

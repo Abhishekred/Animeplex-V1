@@ -274,7 +274,7 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
         )
       : sl<SupabaseService>().currentUserId();
 
-  // Supabase issues auth tokens; cloud data requests use the VPS client.
+  // Supabase issues auth tokens; cloud data requests use our pinned Cloudflare Worker.
   final endpoint = Uri.tryParse(Environment.vpsSyncUrl);
   if (endpoint == null ||
       endpoint.scheme != 'https' ||
@@ -282,14 +282,14 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
       endpoint.userInfo.isNotEmpty ||
       endpoint.hasQuery ||
       endpoint.hasFragment) {
-    throw StateError('VPS_SYNC_URL must be a valid HTTPS sync endpoint');
+    throw StateError('Cloudflare sync endpoint must be a valid HTTPS URL');
   }
   final vpsClient = PostgrestClient(
     endpoint.toString().replaceFirst(RegExp(r'/$'), ''),
   );
   String? cloudAccessToken() =>
       sl<SupabaseService>().client.auth.currentSession?.accessToken;
-  const backendNamespace = 'vps';
+  const backendNamespace = 'animeplex-cloudflare-v1';
 
   await ViewerProfileStore.init();
   sl.registerSingleton<ViewerProfileStore>(

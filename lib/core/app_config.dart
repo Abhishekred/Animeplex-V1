@@ -40,7 +40,7 @@ const String kLogIntakeUrl = 'https://animeplex-logs.ttest.workers.dev';
 /// Public R2 manifest for the rotating profile-picker backdrops. The manifest
 /// contains up to three image filenames stored beside it in this bucket.
 const String kProfilePickerArtworkManifestUrl =
-    'https://avatars.zangetsu.online/profile-picker/manifest.json';
+    'https://pub-31b012ff212e4f15934133826c1d9570.r2.dev/profile-picker/manifest.json';
 
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.

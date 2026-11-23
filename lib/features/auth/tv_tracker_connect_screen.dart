@@ -162,18 +162,18 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                         subtitle: context.l10n.openZangetsuOnYourNphoneAndScan,
                       ),
                       const SizedBox(width: 36),
-                      // QR 2 — no app needed. Opens a web page that runs the
-                      // $_label login in the phone's browser and relays the token
-                      // to this TV (same encrypted-blob path the poll consumes).
-                      _qrOption(
-                        data: PairLink.trackerWebLink(
-                          code: _code!,
-                          nonce: _nonce!,
-                          tracker: widget.trackerId,
+                      // The old browser-based tracker flow exposed the pairing
+                      // nonce to the legacy VPS website. It stays disabled
+                      // until an AnimePlex-owned web relay is available.
+                      SizedBox(
+                        width: 210,
+                        child: Text(
+                          'For your account security, connect using the AnimePlex app on your phone.',
+                          textAlign: TextAlign.center,
+                          style: AppText.body.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                        title: context.l10n.noApp,
-                        subtitle:
-                            'Scan to log in with\n$_label in your browser',
                       ),
                     ],
                   ),
