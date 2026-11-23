@@ -1,0 +1,12 @@
+name = "animeplex-backup"
+main = "src/index.mjs"
+compatibility_date = "2026-11-20"
+workers_dev = true
+
+# Private bucket with no r2.dev domain. Do NOT add a public route for backup files.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "animeplex-backups"
+
+# BACKUP_TOKEN is a secret, stored in Cloudflare only. Supabase Vault
+# keeps its copy for pg_cron to authenticate scheduled exports.
