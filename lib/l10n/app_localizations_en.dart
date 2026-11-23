@@ -2368,7 +2368,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt =>
-      'Open Zangetsu on your TV and sign in with your phone to see it.';
+      'Open AnimePlex on your TV and sign in with your phone to see it.';
 
   @override
   String get abcd2345 => 'ABCD 2345';

@@ -1122,7 +1122,7 @@ class _FloatingDock extends StatelessWidget {
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
   DockTab.history => (Icons.history_outlined, Icons.history_rounded),
-  DockTab.sources => (Icons.movie_filter_outlined, Icons.movie_filter_rounded),
+  DockTab.sources => (Icons.play_circle_outline_rounded, Icons.play_circle_rounded),
   _ => null,
 };
 
