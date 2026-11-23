@@ -14,7 +14,7 @@ enum DockTab {
   myList('My List'),
   downloads('Downloads'),
   history('History'),
-  sources('Sources'),
+  sources('Anime'),
   search('Search'),
   profile('Profile');
 

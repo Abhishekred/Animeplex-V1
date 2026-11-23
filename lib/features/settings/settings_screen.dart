@@ -1348,7 +1348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'check updates upgrade latest beta prerelease support donate coffee',
       onTap: () => _push(const AboutSettingsScreen()),
     ),
-  ];
+  ].where((entry) => entry.section != SettingsSection.sources).toList();
 
   @override
   Widget build(BuildContext context) {

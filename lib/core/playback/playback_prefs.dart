@@ -406,10 +406,10 @@ class PlaybackPrefs {
   /// in the background on launch, throttled to ~once a day. Off by default —
   /// updates otherwise happen only when the user taps Update in Sources. A
   /// failed update always leaves the working version in place.
-  bool get autoUpdateExtensions =>
-      _box.get('autoUpdateExtensions', defaultValue: false) as bool;
+  // Always check for safe extension updates, regardless of older local toggles.
+  bool get autoUpdateExtensions => true;
   Future<void> setAutoUpdateExtensions(bool value) =>
-      _box.put('autoUpdateExtensions', value);
+      _box.put('autoUpdateExtensions', true);
 
   /// Style of the batch-download sheet (detail → Download on a multi-episode
   /// title):

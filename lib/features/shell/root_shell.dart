@@ -11,6 +11,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../search/browse_sources_screen.dart';
 import '../home/home_catalogue_prefs.dart';
+import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/my_list.dart';
@@ -255,7 +256,26 @@ class _RootShellState extends State<RootShell>
     super.dispose();
   }
 
+  /// Open AniList and TMDB metadata rather than installed-source browsing.
+  Future<void> _selectAnimeCatalogue() async {
+    if (sl.isRegistered<MetadataProviderPrefs>()) {
+      final providers = sl<MetadataProviderPrefs>();
+      await providers.setAnime(AnimeProvider.anilist);
+      await providers.setVideo(VideoProvider.tmdb);
+    }
+    if (sl.isRegistered<ContentModeCubit>()) {
+      await sl<ContentModeCubit>().setMode(ContentMode.anime);
+    }
+    await ZModePrefs.setStreamKind(StreamKind.anime);
+    await ZModePrefs.setEnabled(true);
+    await HomeCataloguePrefs.setCatalogue(
+      ContentMode.anime,
+      HomeCatalogueKind.metadata,
+    );
+  }
+
   void _onTabSelected(DockTab tab) {
+    if (tab == DockTab.sources) unawaited(_selectAnimeCatalogue());
     if (tab == DockTab.profile) {
       final now = DateTime.now();
       final lastTap = _lastProfileTap;
@@ -349,7 +369,7 @@ class _RootShellState extends State<RootShell>
             // whole screen, so their own back affordance is suppressed.
             DockTab.downloads => const DownloadsScreen(showBack: false),
             DockTab.history => const HistoryScreen(showBack: false),
-            DockTab.sources => const BrowseSourcesScreen(),
+            DockTab.sources => HomeScreen(isTabActive: _tab == DockTab.sources),
           },
         ),
     ];
@@ -1044,7 +1064,7 @@ class _FloatingDock extends StatelessWidget {
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
   DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
   DockTab.history => (Icons.history_outlined, Icons.history_rounded),
-  DockTab.sources => (Icons.extension_outlined, Icons.extension_rounded),
+  DockTab.sources => (Icons.movie_filter_outlined, Icons.movie_filter_rounded),
   _ => null,
 };
 

@@ -450,7 +450,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
         // avatar did not — it says the same thing in less space and reads.
         final who = active?.viewerName;
         final title = active == null
-            ? 'Zangetsu List'
+            ? 'AnimePlex List'
             : (who == null || who.isEmpty
                   ? active.displayName
                   : '${active.displayName} · $who');

@@ -938,12 +938,11 @@ class CloudStreamManager extends ChangeNotifier {
 
   /// Whether to post a system notification when installed sources have updates
   /// (the launch check). Default true. Persisted in [boxName].
-  bool get notifyUpdates =>
-      _box?.get(_notifyUpdatesKey, defaultValue: true) as bool? ?? true;
+  bool get notifyUpdates => true;
 
-  /// Toggle the launch "source updates available" notification (persisted).
+  /// Source-update notifications cannot be turned off in AnimePlex.
   Future<void> setNotifyUpdates(bool value) async {
-    await _box?.put(_notifyUpdatesKey, value);
+    await _box?.put(_notifyUpdatesKey, true);
     notifyListeners();
   }
 
