@@ -9,7 +9,7 @@ import '../provider/provider_repo_registry.dart';
 import '../provider/provider_registry.dart';
 import '../aniyomi/aniyomi_repo.dart';
 import '../aniyomi/aniyomi_extension_service.dart';
-import '../aniyomi/aniyomi_manager.dart';
+import '../aniyomi/aniyomi_provider.dart';
 import '../mihon/mihon_repo.dart';
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
@@ -121,6 +121,7 @@ class RemoteSelectedProviderSync {
                 );
               }
             }
+            break;
           case 'aniyomi':
             await _rememberRepo('aniyomi_repos', head.repoUrl);
             await _ensureInstalledBox(AniyomiExtensionService.installedBoxName);
@@ -135,6 +136,7 @@ class RemoteSelectedProviderSync {
                 entry, manager: aniyomi,
               );
             }
+            break;
           case 'mihon':
             await _rememberRepo('mihon_repos', head.repoUrl);
             await _ensureInstalledBox(MihonExtensionService.installedBoxName);
@@ -149,6 +151,7 @@ class RemoteSelectedProviderSync {
                 entry, manager: mihon,
               );
             }
+            break;
           case 'lnreader':
             await _rememberRepo('lnreader_repos', head.repoUrl);
             final entries = await lnreader.fetchIndex(head.repoUrl);
@@ -158,6 +161,7 @@ class RemoteSelectedProviderSync {
                 selected.contains(e.id) && !installed.contains(e.id))) {
               await lnreader.install(entry);
             }
+            break;
           case 'mangayomi':
             final uri = Uri.parse(head.repoUrl);
             final entries = mangayomi.repositories.contains(uri)
@@ -173,11 +177,13 @@ class RemoteSelectedProviderSync {
                 await mangayomi.install(source);
               }
             }
+            break;
           case 'stremio':
             final existing = stremio.installations.map((p) => p.manifestId).toSet();
             if (group.any((p) => !existing.contains(p.pluginId))) {
               await stremio.install(head.repoUrl);
             }
+            break;
         }
       } catch (error) {
         debugPrint('[admin-provider-sync] ${head.kind} repo failed: $error');
