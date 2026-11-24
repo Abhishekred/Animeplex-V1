@@ -132,6 +132,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dismiss => '忽略';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => '刷新';
 
   @override
@@ -1433,6 +1439,13 @@ class AppLocalizationsZh extends AppLocalizations {
       '拖动进度时显示缩略图 — 会多用流量';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing AnimePlex. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => '自动画中画';
 
   @override
@@ -1843,6 +1856,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pictureInPicture => '画中画';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => '投屏';
 
   @override
@@ -1925,7 +1941,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get audioDelay => '音频延迟';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -2807,6 +2823,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get builtInPlayer => '内置播放器';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => '其他应用';
 
   @override
@@ -2845,6 +2864,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get customLists => '自定义列表';
+
+  @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
 
   @override
   String get notInAny => '未加入任何';
@@ -5609,6 +5644,16 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get autoPlayerFallbackDescription =>
       'Experimental · Retry failed playback';
+
+  @override
+  String get ambientPlayer => 'Ambient player screen';
+
+  @override
+  String get ambientPlayerDescription =>
+      'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).

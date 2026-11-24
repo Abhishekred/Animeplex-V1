@@ -132,6 +132,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dismiss => 'Dismiss';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Refresh';
 
   @override
@@ -1467,6 +1473,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Thumbnails while scrubbing streams — costs extra data';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing AnimePlex. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Auto picture-in-picture';
 
   @override
@@ -1891,6 +1904,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pictureInPicture => 'Picture-in-picture';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Cast';
 
   @override
@@ -1976,7 +1992,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioDelay => 'Audio delay';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -2891,6 +2907,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get builtInPlayer => 'Built-in player';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Other apps';
 
   @override
@@ -2929,6 +2948,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get customLists => 'Custom lists';
+
+  @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
 
   @override
   String get notInAny => 'Not in any';
@@ -3863,7 +3898,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get styledSubtitlesLibassSubtitlePlayback =>
-      'Real .ass styling — fonts, positions, karaoke, signs. Best for anime. Applies from the next episode.';
+      'Real .ass styling — fonts, positions, karaoke, signs. Only mpv renders it fully; the Android player uses your style settings instead.';
 
   @override
   String get subtitleStyleSubtitle =>
@@ -5745,4 +5780,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get autoPlayerFallbackDescription =>
       'Experimental · Retry failed playback';
+
+  @override
+  String get ambientPlayer => 'Ambient player screen';
+
+  @override
+  String get ambientPlayerDescription =>
+      'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }

@@ -132,6 +132,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get dismiss => 'Verwerfen';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Aktualisieren';
 
   @override
@@ -1480,6 +1486,13 @@ class AppLocalizationsDe extends AppLocalizations {
       'Miniaturen beim Scrubben von Streams — extra Daten';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing AnimePlex. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Auto-Bild-in-Bild';
 
   @override
@@ -1906,6 +1919,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pictureInPicture => 'Bild-in-Bild';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'Übertragen';
 
   @override
@@ -1990,7 +2006,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get audioDelay => 'Audio-Delay';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -2909,6 +2925,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get builtInPlayer => 'Eingebauter Player';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Andere Apps';
 
   @override
@@ -2947,6 +2966,22 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get customLists => 'Eigene Listen';
+
+  @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
 
   @override
   String get notInAny => 'In keiner';
@@ -5795,4 +5830,14 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get autoPlayerFallbackDescription =>
       'Experimental · Retry failed playback';
+
+  @override
+  String get ambientPlayer => 'Ambient player screen';
+
+  @override
+  String get ambientPlayerDescription =>
+      'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }

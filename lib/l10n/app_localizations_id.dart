@@ -132,6 +132,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get dismiss => 'Abaikan';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => 'Muat ulang';
 
   @override
@@ -1480,6 +1486,13 @@ class AppLocalizationsId extends AppLocalizations {
       'Thumbnail saat menggeser streaming — memakai data lebih';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing AnimePlex. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => 'Gambar dalam gambar otomatis';
 
   @override
@@ -1903,6 +1916,9 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get pictureInPicture => 'Gambar dalam gambar';
+
+  @override
+  String get switchPlayer => 'Switch Player';
 
   @override
   String get cast => 'Siaran';
@@ -2908,6 +2924,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get builtInPlayer => 'Pemutar bawaan';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'Aplikasi lain';
 
   @override
@@ -2946,6 +2965,22 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get customLists => 'Daftar kustom';
+
+  @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
 
   @override
   String get notInAny => 'Tidak ada';
@@ -5771,4 +5806,14 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get autoPlayerFallbackDescription =>
       'Experimental · Retry failed playback';
+
+  @override
+  String get ambientPlayer => 'Ambient player screen';
+
+  @override
+  String get ambientPlayerDescription =>
+      'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }

@@ -132,6 +132,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get dismiss => '閉じる';
 
   @override
+  String get dragDownToDismiss => 'Drag down to dismiss';
+
+  @override
+  String get releaseToDismiss => 'Release to dismiss';
+
+  @override
   String get refresh => '更新';
 
   @override
@@ -1442,6 +1448,13 @@ class AppLocalizationsJa extends AppLocalizations {
       'ストリーム操作中にサムネイル — 追加通信が発生';
 
   @override
+  String get inAppMiniPlayer => 'In-app mini-player';
+
+  @override
+  String get inAppMiniPlayerSubtitle =>
+      'Keep watching while browsing AnimePlex. Pinch to resize.';
+
+  @override
   String get autoPictureInPicture => '自動ピクチャーインピクチャー';
 
   @override
@@ -1854,6 +1867,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get pictureInPicture => 'ピクチャーインピクチャー';
 
   @override
+  String get switchPlayer => 'Switch Player';
+
+  @override
   String get cast => 'キャスト';
 
   @override
@@ -1937,7 +1953,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get audioDelay => '音声の遅延';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -2825,6 +2841,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get builtInPlayer => '内蔵プレーヤー';
 
   @override
+  String get mpvPlayer => 'mpv';
+
+  @override
   String get otherApps => 'ほかのアプリ';
 
   @override
@@ -2863,6 +2882,22 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get customLists => 'カスタムリスト';
+
+  @override
+  String get addToSeries => 'Add to series';
+
+  @override
+  String get noSeries => 'No series';
+
+  @override
+  String get newSeries => 'New series';
+
+  @override
+  String get deleteSeries => 'Delete series';
+
+  @override
+  String get deleteSeriesConfirm =>
+      'Delete this series? Your titles stay on My List.';
 
   @override
   String get notInAny => '未分類';
@@ -5651,4 +5686,14 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get autoPlayerFallbackDescription =>
       'Experimental · Retry failed playback';
+
+  @override
+  String get ambientPlayer => 'Ambient player screen';
+
+  @override
+  String get ambientPlayerDescription =>
+      'Tinted glow behind the portrait player, matched to the video';
+
+  @override
+  String get portraitVideoEdgeToEdge => 'Edge-to-edge portrait video';
 }
