@@ -11,11 +11,13 @@ import 'package:watch_app/features/player/watch_page_motion.dart';
 import 'package:watch_app/features/player/watch_page_info.dart';
 
 PlayerWatchPage _page({
+  bool edgeToEdge = false,
   bool isMovie = false,
   bool loading = false,
   String? loadingStatus,
   String? serverName,
   Stream<bool>? bufferingStream,
+  Stream<int?>? firstFrameStream,
   String? description = 'A great episode.',
   String? nextTitle = 'The Next One',
   List<WatchPageEpisode> episodes = const [],
@@ -25,6 +27,9 @@ PlayerWatchPage _page({
   VoidCallback? onPrevious,
   VoidCallback? onNext,
   VoidCallback? onFullscreen,
+  VoidCallback? onMinimize,
+  bool startMinimized = false,
+  Listenable? minimizeRequests,
   ValueChanged<Duration>? onSeek,
   ValueChanged<Duration>? onSeekBy,
   ValueChanged<bool>? onHoldSpeedChanged,
@@ -41,6 +46,7 @@ PlayerWatchPage _page({
   void Function(int?)? onSelectSeason,
 }) {
   return PlayerWatchPage(
+    edgeToEdge: edgeToEdge,
     isMovie: isMovie,
     loading: loading,
     loadingStatus: loadingStatus,
@@ -59,6 +65,7 @@ PlayerWatchPage _page({
     initialDuration: Duration.zero,
     hasPrevious: true,
     bufferingStream: bufferingStream,
+    firstFrameStream: firstFrameStream,
     ambientFrameStream: ambientFrameStream,
     nextThumb: null,
     nextLabel: 'S1 E2',
@@ -73,6 +80,9 @@ PlayerWatchPage _page({
     onPrevious: onPrevious ?? () {},
     onNext: onNext ?? () {},
     onFullscreen: onFullscreen ?? () {},
+    onMinimize: onMinimize,
+    startMinimized: startMinimized,
+    minimizeRequests: minimizeRequests,
     onBack: onBack ?? () {},
     onServer: onServer ?? () {},
     onAudio: () {},
@@ -95,10 +105,181 @@ Future<void> _pump(WidgetTester tester, PlayerWatchPage page) {
 }
 
 void main() {
+  testWidgets('startup hides the spinner and rebuffering shows it', (
+    tester,
+  ) async {
+    final frames = StreamController<int?>();
+    final buffering = StreamController<bool>.broadcast();
+    addTearDown(frames.close);
+    addTearDown(buffering.close);
+    await _pump(
+      tester,
+      _page(firstFrameStream: frames.stream, bufferingStream: buffering.stream),
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    frames.add(1920);
+    buffering.add(true);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('portrait video uses the full width only when enabled', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final video = find.byKey(const ValueKey('watch-video'));
+
+    await _pump(tester, _page());
+    expect(tester.getRect(video).left, 12);
+    expect(tester.getRect(video).right, 388);
+
+    await _pump(tester, _page(edgeToEdge: true));
+    expect(tester.getRect(video).left, 0);
+    expect(tester.getRect(video).right, 400);
+    expect(tester.getSize(video).height, 225);
+  });
+
   Offset videoSide(WidgetTester tester, double side) {
     final rect = tester.getRect(find.byKey(const ValueKey('watch-video')));
     return Offset(rect.left + rect.width * side, rect.top + rect.height * .24);
   }
+
+  testWidgets('only an upward video swipe opens fullscreen', (tester) async {
+    var entered = 0;
+    await _pump(tester, _page(onFullscreen: () => entered++));
+    final video = tester.getRect(find.byKey(const ValueKey('watch-video')));
+    await tester.dragFrom(video.center, const Offset(0, 85));
+    expect(entered, 0);
+    await tester.dragFrom(video.center, const Offset(-100, 0));
+    expect(entered, 0);
+    await tester.dragFrom(video.center, const Offset(0, -100));
+    expect(entered, 1);
+  });
+
+  testWidgets('downward pull carries the video toward the mini player', (
+    tester,
+  ) async {
+    var minimized = 0;
+    await _pump(tester, _page(onMinimize: () => minimized++));
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    final short = await tester.startGesture(original.center);
+    await short.moveBy(const Offset(0, 60));
+    await tester.pump();
+    final moved = tester.getRect(video);
+    // The card follows the finger, shrinking toward the dock corner.
+    expect(moved.top, greaterThan(original.top));
+    expect(moved.width, lessThan(original.width));
+    expect(moved.left, greaterThan(original.left));
+    expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    // A short pull springs back and does not minimize.
+    await short.up();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(video), original);
+    expect(minimized, 0);
+
+    // A quick flick commits even when the pull is short.
+    await tester.timedDragFrom(
+      original.center,
+      const Offset(0, 40),
+      const Duration(milliseconds: 40),
+    );
+    await tester.pumpAndSettle();
+    expect(minimized, 1);
+  });
+
+  testWidgets('opening from the mini player grows out of the dock', (
+    tester,
+  ) async {
+    await _pump(tester, _page(onMinimize: () {}, startMinimized: true));
+    final video = find.byKey(const ValueKey('watch-video'));
+    // First frame: sitting in the dock's corner, small.
+    final start = tester.getRect(video);
+    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(start.width, lessThan(screen.width / 2));
+    expect(start.top, greaterThan(screen.height / 2));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final mid = tester.getRect(video);
+    expect(mid.width, greaterThan(start.width));
+    await tester.pumpAndSettle();
+    final full = tester.getRect(video);
+    expect(full.width, greaterThan(screen.width * .8));
+    expect(full.top, lessThan(screen.height / 4));
+  });
+
+  testWidgets('a back request minimizes with the same morph', (tester) async {
+    var minimized = 0;
+    final requests = ValueNotifier(0);
+    addTearDown(requests.dispose);
+    await _pump(
+      tester,
+      _page(onMinimize: () => minimized++, minimizeRequests: requests),
+    );
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    requests.value++;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    // Mid-flight: already moving and shrinking, not yet handed over.
+    final mid = tester.getRect(video);
+    expect(mid.top, greaterThan(original.top));
+    expect(mid.width, lessThan(original.width));
+    expect(minimized, 0);
+    await tester.pumpAndSettle();
+    expect(minimized, 1);
+  });
+
+  testWidgets('a long slow pull minimizes once released', (tester) async {
+    var minimized = 0;
+    await _pump(tester, _page(onMinimize: () => minimized++));
+    final video = find.byKey(const ValueKey('watch-video'));
+    final original = tester.getRect(video);
+    final drag = await tester.startGesture(original.center);
+    await drag.moveBy(const Offset(0, 220));
+    await tester.pump();
+    expect(minimized, 0); // still following the finger
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(minimized, 1);
+  });
+
+  testWidgets(
+    'rotation pull previews progress and snaps back below the limit',
+    (tester) async {
+      var entered = 0;
+      await _pump(tester, _page(onFullscreen: () => entered++));
+      final finder = find.byKey(const ValueKey('watch-video'));
+      final original = tester.getRect(finder);
+      final gesture = await tester.startGesture(original.center);
+      await gesture.moveBy(const Offset(0, -45));
+      await tester.pump();
+      expect(tester.getRect(finder).top, lessThan(original.top));
+      final progress = find.byKey(
+        const ValueKey('watch-rotation-pull-progress'),
+      );
+      expect(
+        tester.widget<LinearProgressIndicator>(progress).value,
+        lessThan(1),
+      );
+      expect(entered, 0);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(tester.getRect(finder), original);
+      expect(progress, findsNothing);
+      expect(entered, 0);
+
+      final longPull = await tester.startGesture(original.center);
+      await longPull.moveBy(const Offset(0, -75));
+      await tester.pump();
+      expect(tester.widget<LinearProgressIndicator>(progress).value, 1);
+      expect(entered, 0);
+      await longPull.up();
+      expect(entered, 1);
+    },
+  );
 
   testWidgets('video double taps seek left and right by the saved step', (
     tester,
@@ -107,7 +288,7 @@ void main() {
     await _pump(tester, _page(onSeekBy: seeks.add, doubleTapSeconds: 15));
     for (final side in [.15, .85]) {
       await tester.tapAt(videoSide(tester, side));
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
       await tester.tapAt(videoSide(tester, side));
       await tester.pump(const Duration(milliseconds: 360));
     }
@@ -120,7 +301,7 @@ void main() {
     await _pump(tester, _page(onSeekBy: seeks.add));
     for (var i = 0; i < 3; i++) {
       await tester.tapAt(videoSide(tester, .85));
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
     }
     expect(seeks, isEmpty);
     await tester.pump(const Duration(milliseconds: 360));
@@ -176,7 +357,7 @@ void main() {
       );
       final play = find.byKey(const ValueKey('watch-play'));
       await tester.tap(play);
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 40));
       await tester.tap(play);
       await tester.pump(const Duration(milliseconds: 360));
       expect(plays, 2);
@@ -199,7 +380,7 @@ void main() {
       _page(onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
     );
     await tester.tapAt(videoSide(tester, .15));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .15));
     await _pump(
       tester,
@@ -228,7 +409,7 @@ void main() {
       _page(loading: true, onSeekBy: seeks.add, onHoldSpeedChanged: holds.add),
     );
     await tester.tapAt(videoSide(tester, .85));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .85));
     await tester.pump(const Duration(milliseconds: 360));
     final gesture = await tester.startGesture(videoSide(tester, .85));
@@ -243,7 +424,7 @@ void main() {
     final seeks = <Duration>[];
     await _pump(tester, _page(onSeekBy: seeks.add));
     await tester.tapAt(videoSide(tester, .5));
-    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 40));
     await tester.tapAt(videoSide(tester, .5));
     await tester.pump(const Duration(milliseconds: 360));
     expect(seeks, isEmpty);
@@ -765,53 +946,6 @@ void main() {
     expect(find.text('01:30 / 24:00'), findsOneWidget);
   });
 
-  testWidgets('spinner stays up until the first frame, loading or not', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      PlayerWatchPage(
-        video: const ColoredBox(color: Colors.black),
-        header: const WatchPageHeader(
-          title: 'T',
-          subtitle: 'S',
-          description: null,
-        ),
-        loading: false,
-        firstFrameStream: Stream<int?>.empty(),
-        initialFirstFrame: 0,
-        positionStream: Stream<Duration>.empty(),
-        durationStream: Stream<Duration?>.empty(),
-        playingStream: Stream.value(false),
-        initialPlaying: false,
-        initialPosition: Duration.zero,
-        initialDuration: Duration.zero,
-        hasPrevious: false,
-        nextThumb: null,
-        nextLabel: null,
-        nextTitle: null,
-        autoplay: true,
-        episodes: const [],
-        onOpenEpisode: (_) {},
-        onTogglePlay: () {},
-        onSeek: (_) {},
-        onPrevious: () {},
-        onNext: () {},
-        onFullscreen: () {},
-        onBack: () {},
-        onServer: () {},
-        onAudio: () {},
-        onSubtitles: () {},
-        onMore: () {},
-        onComments: () {},
-        onAutoplayChanged: (_) {},
-      ),
-    );
-
-    // No picture yet — the spinner holds even though nothing is "loading".
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
-
   testWidgets('dead rows show their reason and ignore taps', (tester) async {
     int? opened;
     await tester.pumpWidget(
@@ -1043,7 +1177,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.skip_previous_rounded));
     await tester.tap(find.byIcon(Icons.skip_next_rounded));
     await tester.tap(find.byIcon(Icons.fullscreen_rounded));
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(5000);
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChanged!(5000);
+    // Dragging only moves the thumb; the seek lands once, on release.
+    expect(seek, isNull);
+    slider.onChangeEnd!(5000);
     expect([back, play, previous, next, fullscreen], [1, 1, 1, 1, 1]);
     expect(seek, const Duration(seconds: 5));
   });

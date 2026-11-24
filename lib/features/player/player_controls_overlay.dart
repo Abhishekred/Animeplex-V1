@@ -31,6 +31,10 @@ class _ControlsOverlay extends StatelessWidget {
     required this.megaSkipSeconds,
     required this.onMegaSkip,
     this.onPip,
+    this.onMinimize,
+    this.onSwitchPlayer,
+    required this.ambientActive,
+    required this.onAmbientToggle,
     this.onChat,
     this.onInfo,
     this.infoOpen = false,
@@ -74,7 +78,12 @@ class _ControlsOverlay extends StatelessWidget {
   final bool megaSkipEnabled; // MegaSkip pill above the seek bar
   final int megaSkipSeconds;
   final VoidCallback onMegaSkip;
+  final VoidCallback? onMinimize;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
+  final VoidCallback? onSwitchPlayer; // null = no other engine to switch to
+  final bool
+  ambientActive; // current state of the "Ambient player screen" setting
+  final VoidCallback onAmbientToggle;
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
@@ -101,6 +110,10 @@ class _ControlsOverlay extends StatelessWidget {
       sleepActive: sleepActive,
       onSleep: onSleep,
       onPip: onPip,
+      onMinimize: onMinimize,
+      onSwitchPlayer: onSwitchPlayer,
+      ambientActive: ambientActive,
+      onAmbientToggle: onAmbientToggle,
     );
   }
 
@@ -119,6 +132,10 @@ class _ControlsOverlay extends StatelessWidget {
     required bool sleepActive,
     required VoidCallback onSleep,
     required VoidCallback? onPip,
+    VoidCallback? onMinimize,
+    required VoidCallback? onSwitchPlayer,
+    required bool ambientActive,
+    required VoidCallback onAmbientToggle,
     bool animatePortraitEntrance = false,
   }) {
     final portrait =
@@ -225,6 +242,15 @@ class _ControlsOverlay extends StatelessWidget {
                           onSleep();
                         },
                       ),
+                      if (onMinimize != null)
+                        _MoreRow(
+                          icon: Icons.close_fullscreen_rounded,
+                          label: 'Minimize player',
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            onMinimize();
+                          },
+                        ),
                       if (onPip != null)
                         _MoreRow(
                           icon: Icons.picture_in_picture_alt_rounded,
@@ -234,6 +260,27 @@ class _ControlsOverlay extends StatelessWidget {
                             onPip();
                           },
                         ),
+                      if (onSwitchPlayer != null)
+                        _MoreRow(
+                          icon: Icons.swap_horiz_rounded,
+                          label: ctx.l10n.switchPlayer,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            onSwitchPlayer();
+                          },
+                        ),
+                      _MoreRow(
+                        icon: ambientActive
+                            ? Icons.gradient_rounded
+                            : Icons.gradient_outlined,
+                        label: ambientActive
+                            ? ctx.l10n.ambientPlayer
+                            : '${ctx.l10n.ambientPlayer} · ${ctx.l10n.off}',
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onAmbientToggle();
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -543,54 +590,61 @@ class _ControlsOverlay extends StatelessWidget {
                   // zones below and toggle the controls like anywhere else.
                   Expanded(
                     child: IgnorePointer(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
+                      child: _ShowAfterFirstFrame(
+                        // Show / episode names stay hidden behind the startup
+                        // loader, then fade in.
+                        controller: c,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    primaryTitle,
+                                    style: AppText.headline.copyWith(
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // Filler comes from the Jikan lookup, not the
+                                // source — Episode.filler is always false here.
+                                // Listened to because that lookup lands long
+                                // after this is first built.
+                                ValueListenableBuilder<Set<int>>(
+                                  valueListenable: c.fillerEpisodes,
+                                  builder: (context, _, _) =>
+                                      c.isFillerAt(state.currentIndex)
+                                      ? const Padding(
+                                          padding: EdgeInsetsDirectional.only(
+                                            start: 8,
+                                          ),
+                                          // No colour passed: TagBadge falls back
+                                          // to the app accent, so the badge
+                                          // follows the user's theme colour.
+                                          child: TagBadge(text: 'FILLER'),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
+                            if (secondaryLine != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1),
                                 child: Text(
-                                  primaryTitle,
-                                  style: AppText.headline.copyWith(
-                                    color: Colors.white,
+                                  secondaryLine,
+                                  style: AppText.caption.copyWith(
+                                    color: Colors.white70,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              // Filler comes from the Jikan lookup, not the
-                              // source — Episode.filler is always false here.
-                              // Listened to because that lookup lands long
-                              // after this is first built.
-                              ValueListenableBuilder<Set<int>>(
-                                valueListenable: c.fillerEpisodes,
-                                builder: (context, _, _) =>
-                                    c.isFillerAt(state.currentIndex)
-                                    ? const Padding(
-                                        padding: EdgeInsetsDirectional.only(start: 8),
-                                        // No colour passed: TagBadge falls back
-                                        // to the app accent, so the badge
-                                        // follows the user's theme colour.
-                                        child: TagBadge(text: 'FILLER'),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
-                          ),
-                          if (secondaryLine != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 1),
-                              child: Text(
-                                secondaryLine,
-                                style: AppText.caption.copyWith(
-                                  color: Colors.white70,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -663,39 +717,48 @@ class _ControlsOverlay extends StatelessWidget {
                 ),
                 const SizedBox(width: 24),
               ],
-              StreamBuilder<bool>(
-                stream: c.player.stream.buffering,
-                builder: (context, bSnap) {
-                  final buffering = bSnap.data ?? c.player.state.buffering;
-                  // While buffering, show the spinner IN PLACE OF the play/pause
-                  // button — no more spinner-over-button overlap. 58px matches
-                  // _AnimatedPlayPause's disc exactly, so the episode arrows
-                  // don't twitch every time playback stalls.
-                  if (buffering) {
-                    return const SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: Center(
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+              StreamBuilder<int?>(
+                stream: c.player.stream.width,
+                initialData: c.player.state.width,
+                builder: (context, frame) {
                   return StreamBuilder<bool>(
-                    stream: c.player.stream.playing,
-                    builder: (context, snap) {
-                      final playing = snap.data ?? c.player.state.playing;
-                      return _AnimatedPlayPause(
-                        playing: playing,
-                        onTap: () {
-                          c.togglePlay();
-                          onInteract();
+                    stream: c.player.stream.buffering,
+                    builder: (context, bSnap) {
+                      final buffering = bSnap.data ?? c.player.state.buffering;
+                      // While buffering, show the spinner IN PLACE OF the play/pause
+                      // button — no more spinner-over-button overlap. 58px matches
+                      // _AnimatedPlayPause's disc exactly, so the episode arrows
+                      // don't twitch every time playback stalls.
+                      if (buffering) {
+                        if ((frame.data ?? 0) <= 0) {
+                          return const SizedBox(width: 58, height: 58);
+                        }
+                        return const SizedBox(
+                          width: 58,
+                          height: 58,
+                          child: Center(
+                            child: SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return StreamBuilder<bool>(
+                        stream: c.player.stream.playing,
+                        builder: (context, snap) {
+                          final playing = snap.data ?? c.player.state.playing;
+                          return _AnimatedPlayPause(
+                            playing: playing,
+                            onTap: () {
+                              c.togglePlay();
+                              onInteract();
+                            },
+                          );
                         },
                       );
                     },
@@ -838,3 +901,54 @@ class _ControlsOverlay extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Seek row — current time + slider (stream-bound) + total time.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Fades its child in once the first video frame is up — or playback has
+/// started, so audio-only media (no frame, ever) isn't left without a title.
+/// Latches: a later source switch resetting the width doesn't hide it again.
+class _ShowAfterFirstFrame extends StatefulWidget {
+  const _ShowAfterFirstFrame({required this.controller, required this.child});
+
+  final PlayerCubit controller;
+  final Widget child;
+
+  @override
+  State<_ShowAfterFirstFrame> createState() => _ShowAfterFirstFrameState();
+}
+
+class _ShowAfterFirstFrameState extends State<_ShowAfterFirstFrame> {
+  late bool _shown = _ready();
+  final _subs = <StreamSubscription<Object?>>[];
+
+  bool _ready() {
+    final p = widget.controller.player.state;
+    return (p.width ?? 0) > 0 || p.playing;
+  }
+
+  void _check() {
+    if (!_shown && mounted && _ready()) setState(() => _shown = true);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.controller.player.stream;
+    _subs
+      ..add(s.width.listen((_) => _check()))
+      ..add(s.playing.listen((_) => _check()));
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: _shown ? 1 : 0,
+    duration: const Duration(milliseconds: 250),
+    child: widget.child,
+  );
+}

@@ -45,39 +45,43 @@ class _SeekRowState extends State<PlayerSeekBar> {
   // (a negative countdown, e.g. "−1:00"), CloudStream-style.
   bool _showRemaining = false;
 
-  // Netflix-style scrub preview: a hidden second player/decoder renders the
-  // frame at the drag position. Kept alive for the whole session so only the
-  // first scrub pays the open cost; online (mpv) re-opening every drag is what
-  // made the box take ages to appear.
   SeekPreview? _preview;
-  bool _prewarmed = false;
+  String? _prewarmedUri;
 
-  // Open the online (mpv) preview engine ahead of the first drag so the stream
-  // is already loaded by the time the user scrubs — avoids the long "hold and
-  // wait" for the box to appear. Offline (MMR) is instant, so no pre-warm.
+  bool get _supportsOnlinePreview {
+    if (!Platform.isAndroid || sl<AppMode>().isTv) return false;
+    final scheme = Uri.tryParse(widget.controller.previewUri ?? '')?.scheme;
+    return scheme == 'https' || scheme == 'http';
+  }
+
   void _maybePrewarm() {
-    // Online scrub preview removed (see _previewEnabled) — this stays inert:
-    // the local check returns for downloads, and online no longer enables.
-    if (_prewarmed) return;
+    if (widget.duration <= Duration.zero || _dragMs != null) return;
     final c = widget.controller;
-    if (c.previewUri == null || c.isLocalMedia) return;
-    if (!sl<PlaybackPrefs>().seekPreviewOnline) return;
-    _prewarmed = true;
+    final uri = c.previewUri;
+    if (uri == null || uri == _prewarmedUri || c.isLocalMedia) return;
+    if (!_supportsOnlinePreview) return;
+    _prewarmedUri = uri;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _ensurePreview();
-      _preview?.request(c.player.state.position);
+      if (_dragMs == null) {
+        _ensurePreview();
+        _warmPreview(c.player.state.position);
+      }
     });
+  }
+
+  void _warmPreview(Duration position) {
+    _preview?.warm(
+      position,
+      duration: widget.duration,
+      isBuffering: () => widget.controller.player.state.buffering,
+    );
   }
 
   bool get _previewEnabled {
     final c = widget.controller;
     if (c.previewUri == null) return false;
-    // Online scrub preview removed — the hidden second-mpv engine was flaky
-    // (screenshots often came back empty) and re-downloaded the stream just to
-    // make thumbnails. Only local (download) previews remain: instant and free.
-    return c.isLocalMedia;
-    // return c.isLocalMedia || sl<PlaybackPrefs>().seekPreviewOnline;
+    return c.isLocalMedia || _supportsOnlinePreview;
   }
 
   void _ensurePreview() {
@@ -286,10 +290,12 @@ class _SeekRowState extends State<PlayerSeekBar> {
                                   onChangeEnd: totalMs <= 0
                                       ? null
                                       : (v) {
-                                          widget.controller.seekTo(
-                                            Duration(milliseconds: v.round()),
+                                          final position = Duration(
+                                            milliseconds: v.round(),
                                           );
+                                          widget.controller.seekTo(position);
                                           setState(() => _dragMs = null);
+                                          _warmPreview(position);
                                           widget.onInteract();
                                         },
                                 ),
@@ -297,30 +303,6 @@ class _SeekRowState extends State<PlayerSeekBar> {
                             },
                           ),
                         ),
-                        // Off-screen 1px Video that drives mpv frame rendering
-                        // for online previews — mpv only produces screenshot-able
-                        // frames when its texture is actually painted. Kept
-                        // mounted whenever the preview player exists (not only
-                        // mid-drag) so it stays warm between scrubs.
-                        if (_preview != null && _preview!.usesVideo)
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            width: 1,
-                            height: 1,
-                            child: IgnorePointer(
-                              child: ValueListenableBuilder<VideoController?>(
-                                valueListenable: _preview!.videoController,
-                                builder: (context, vc, _) => vc == null
-                                    ? const SizedBox.shrink()
-                                    : Video(
-                                        controller: vc,
-                                        controls: NoVideoControls,
-                                        fill: Colors.transparent,
-                                      ),
-                              ),
-                            ),
-                          ),
                         if (_dragMs != null)
                           Positioned(
                             left: left,
@@ -439,9 +421,11 @@ class _BufferedSliderTrackShape extends SliderTrackShape
 }
 
 /// Floating thumbnail shown above the seek-bar thumb while scrubbing. Shows the
-/// preview frame once one is available (never a loading spinner) with the
-/// target time beneath it. Until a frame lands — or on sources that can't be
-/// previewed — it's just a plain time bubble.
+/// preview frame once one is available, with a spinner in the box while it's
+/// still loading, and the target time beneath it. On sources that can't be
+/// previewed at all — or that fail to answer for a few seconds — it falls
+/// back to a plain time bubble (no box, no spinner) instead of spinning
+/// forever.
 class _PreviewBubble extends StatelessWidget {
   const _PreviewBubble({required this.preview, required this.time});
 
@@ -455,25 +439,41 @@ class _PreviewBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (p != null)
-          ValueListenableBuilder<Uint8List?>(
-            valueListenable: p.frame,
-            builder: (context, bytes, _) {
-              if (bytes == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: 168,
-                    height: 94,
-                    color: Colors.black,
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
+          ValueListenableBuilder<bool>(
+            valueListenable: p.timedOut,
+            builder: (context, timedOut, _) {
+              if (timedOut) return const SizedBox.shrink();
+              return ValueListenableBuilder<Uint8List?>(
+                valueListenable: p.frame,
+                builder: (context, bytes, _) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 168,
+                        height: 94,
+                        color: Colors.black,
+                        child: bytes == null
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : Image.memory(
+                                bytes,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           ),

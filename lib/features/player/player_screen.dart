@@ -17,6 +17,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/ui/copy_playback_link.dart';
 import '../../core/di/injector.dart';
+import '../../core/metadata/title_logo_service.dart';
+import '../../core/playback/tv_playback_helpers.dart' show mediaItemForPlayback;
+import '../../core/theme/theme_controller.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
@@ -26,6 +29,7 @@ import '../../core/playback/external_player.dart';
 import '../../core/logging/app_logger.dart';
 import 'phone_playback_launch.dart';
 import 'episode_player_route.dart';
+import 'in_app_mini_player.dart';
 import 'player_engine_fallback.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
@@ -58,7 +62,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/app_dialog.dart';
 import '../../core/ui/episode_unavailable_dialog.dart';
 import '../../core/ui/badge.dart';
-import '../../core/ui/brand_loader.dart';
+import 'playback_loading_title.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../detail/cubit/detail_cubit.dart' show seasonOf, seasonsOf;
@@ -210,6 +214,8 @@ class PlayerScreen extends StatefulWidget {
     this.showDescription,
     this.cover,
     this.coverHeaders,
+    this.loadingLogo,
+    this.loadingBackdrop,
     this.showUrl,
     this.downloadShowId,
     this.category,
@@ -235,7 +241,7 @@ class PlayerScreen extends StatefulWidget {
   final VideoSource? initialSource;
   final PlayerEngineFallback? engineFallback;
   final void Function(PlaybackEngine, PhonePlaybackFailure, Future<void>)?
-      onEngineChange;
+  onEngineChange;
   final bool engineRecovery;
 
   /// Uses movie wording without changing the playable entries.
@@ -305,6 +311,8 @@ class PlayerScreen extends StatefulWidget {
   final String? showDescription;
   final String? cover;
   final Map<String, String>? coverHeaders;
+  final String? loadingLogo;
+  final String? loadingBackdrop;
   final String? showUrl;
   final String? category;
 
@@ -344,10 +352,13 @@ class PlayerScreen extends StatefulWidget {
       initialSource,
       playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage,
     );
+    // Not gated on autoPlayerFallback: a torrent must yield native→mpv even
+    // with the toggle off (see tryOtherPlayer), and only this host actually
+    // performs the swap via onEngineChange. Without it that handoff silently
+    // no-ops — the native player closes and nothing replaces it.
     if (engineFallback == null &&
         Platform.isAndroid &&
         !sl<AppMode>().isTv &&
-        sl<PlaybackPrefs>().autoPlayerFallback &&
         (preferred.isEmpty || preferred == PlaybackPrefs.androidPlayerId)) {
       return _PlayerEngineHostState();
     }
@@ -365,7 +376,25 @@ class _PlayerEngineHostState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_changing) return const SizedBox.shrink();
+    // Opaque, not blank: the native Activity already finished by the time
+    // this shows, so an empty widget lets Detail flash through underneath
+    // for a frame. A full-bleed loader reads as "switching player", not
+    // "closed".
+    if (_changing) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              color: AppColors.accent,
+              strokeWidth: 2.5,
+            ),
+          ),
+        ),
+      );
+    }
     final failure = _failure;
     return PlayerScreen(
       key: ValueKey(_generation),
@@ -386,6 +415,8 @@ class _PlayerEngineHostState extends State<PlayerScreen> {
       showDescription: widget.showDescription,
       cover: widget.cover,
       coverHeaders: widget.coverHeaders,
+      loadingLogo: widget.loadingLogo,
+      loadingBackdrop: widget.loadingBackdrop,
       showUrl: widget.showUrl,
       downloadShowId: widget.downloadShowId,
       category: failure?.category ?? widget.category,
@@ -520,6 +551,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Offset _zoomPan = Offset.zero; // pan offset while zoomed in
   int _zoomIndex = -1; // episode this zoom belongs to (reset on episode change)
   bool _pinching = false; // 2 fingers down → suppress the 1-finger swipes
+  double? _fullscreenExitStartY;
+  final _fullscreenRotationPull = ValueNotifier(0.0);
   final Map<int, Offset> _pointers = {}; // live pointers tracked for the pinch
   double _pinchBaseDist = 0; // finger spread when the pinch started
   double _pinchBaseZoom = 1.0;
@@ -605,15 +638,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // home screen.
   String? _loadError;
 
-  // Picture-in-Picture (Android only; iOS has no PiP path with media_kit).
+  // Android uses its activity window. iOS uses the mpv video texture.
   // `floating` powers the manual button + the status poll; auto-PiP-on-leave is
   // done natively (MainActivity) because the plugin's OnLeavePiP only works on
   // Android 12+ and silently no-ops on older devices.
   final Floating _floating = Floating();
   static const MethodChannel _pipChannel = MethodChannel('zangetsu/pip');
+  static const _iosPipChannel = MethodChannel('zangetsu/ios_pip');
   bool _pipSupported = false; // device supports PiP + we're on Android
   bool _inPip = false; // currently rendering inside the PiP window
   StreamSubscription<PiPStatus>? _pipSub;
+  StreamSubscription<bool>? _iosPipPlaying;
   // Playing / video-size listeners that keep the PiP window's buttons and
   // aspect ratio current. PiP-only — they don't feed anything else.
   final List<StreamSubscription<dynamic>> _pipStateSubs = [];
@@ -651,15 +686,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
     // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
     unawaited(ShaderPresets.refreshDownloaded());
-    if (Platform.isAndroid && _chosenPlayer == PlaybackPrefs.androidPlayerId) {
-      _launchExoThenPop();
-      return;
+    // Routed through resolvePhonePlayerRoute (unit-tested): the external
+    // branch matches any non-empty id, so the native choice must never fall
+    // through into it — that pops straight back to Detail.
+    switch (resolvePhonePlayerRoute(
+      isAndroid: Platform.isAndroid,
+      chosenPlayer: _chosenPlayer,
+      initialSource: widget.initialSource,
+    )) {
+      case PhonePlayerRoute.exo:
+        _launchExoThenPop();
+        return;
+      case PhonePlayerRoute.external:
+        _launchExternalThenPop();
+        return;
+      case PhonePlayerRoute.inApp:
+        break;
     }
-    if (Platform.isAndroid && _chosenPlayer.isNotEmpty) {
-      _launchExternalThenPop();
-      return;
+    if (dockedPlayer.value == null) {
+      _initInApp();
+    } else {
+      unawaited(_initAfterClosingDock());
     }
-    _initInApp();
     if (Platform.isAndroid && !sl<AppMode>().isTv && _followSensor) {
       _orientationTurns = const EventChannel('zangetsu/player_orientation')
           .receiveBroadcastStream()
@@ -711,7 +759,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _ambientEp = -1;
 
   void _startAmbientSampler() {
-    if (!_ready || (_ambientTimer?.isActive ?? false)) return;
+    if (!_ready ||
+        !sl<PlaybackPrefs>().ambientPlayer ||
+        (_ambientTimer?.isActive ?? false)) {
+      return;
+    }
     _ambientTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       _sampleAmbientFrame();
     });
@@ -774,17 +826,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _applyPlayerSystemUi() {
-    final watchPage = _watchPageEnabled &&
-        _presentation == PlayerPresentation.watchPage;
+    final watchPage =
+        _watchPageEnabled && _presentation == PlayerPresentation.watchPage;
     SystemChrome.setEnabledSystemUIMode(
       watchPage ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
     );
     if (watchPage) {
-      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ));
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+      );
     }
   }
 
@@ -819,7 +873,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_watchPageEnabled) return;
+    if (!_watchPageEnabled || _docked) return;
     final current = MediaQuery.orientationOf(context);
     if (_lastOrientation == null) {
       _lastOrientation = current;
@@ -906,7 +960,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _orientationApplied = false;
 
   void _applyOrientation() {
-    if (_orientationApplied || !mounted) return;
+    if (_orientationApplied || !mounted || _docked) return;
     _orientationApplied = true;
     SystemChrome.setPreferredOrientations(_orientationLock);
   }
@@ -950,6 +1004,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // which is worse than the thing this avoids.
       Future.delayed(const Duration(milliseconds: 600), _applyOrientation);
     });
+  }
+
+  Future<void> _initAfterClosingDock() async {
+    // This State may have been created during a build of the navigator.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await PhoneNativePlayer.closeDockedPlayback();
+    final dock = dockedPlayer.value;
+    if (dock != null) {
+      dock.onClose();
+      await WidgetsBinding.instance.endOfFrame;
+      await playerRouteTeardownBarrier.waitUntilIdle();
+    }
+    if (mounted) _initInApp();
   }
 
   void _initInApp() {
@@ -1117,6 +1185,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// track the PiP status so the UI can collapse to video-only inside the
   /// floating window. Best-effort — any failure just leaves PiP disabled.
   Future<void> _setupPip() async {
+    if (Platform.isIOS && !sl<AppMode>().isTv) {
+      try {
+        final supported = await _iosPipChannel.invokeMethod<bool>('supported');
+        if (mounted && supported == true) setState(() => _pipSupported = true);
+      } on PlatformException {
+        // PiP is optional on this device.
+      } on MissingPluginException {
+        // This host has no iOS PiP bridge.
+      }
+      return;
+    }
     if (!Platform.isAndroid) return;
     try {
       final available = await _floating.isPipAvailable;
@@ -1126,22 +1205,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!mounted) return;
         final inPip = status == PiPStatus.enabled;
         if (inPip != _inPip) {
-          // Log-only, and the reason is the absence of it: a report about
-          // closing the app while watching in picture-in-picture could not be
-          // read at all, because nothing anywhere recorded that PiP had been
-          // entered. The sole trace was Discord logging `paused` then
-          // `foreground` twice inside 15ms, which is not evidence.
-          //
-          // Read from the Dart-side status stream rather than the Activity
-          // callback on purpose: MainActivity.kt cannot currently be edited
-          // without breaking the Android build (any change to it fails on
-          // CfWebViewSolver), and a log line is not worth that.
           debugPrint(
             '[pip] ${inPip ? 'entered' : 'left'} · '
             'ep=${_c.state.currentIndex} '
             'pos=${_c.player.state.position.inSeconds}s',
           );
           setState(() => _inPip = inPip);
+          if (!inPip && _docked) {
+            SystemChrome.setPreferredOrientations(const [
+              DeviceOrientation.portraitUp,
+            ]);
+          }
         }
         // Re-push on entry. The stream listeners below only fire on CHANGE,
         // and playback usually starts before this async setup finishes — so
@@ -1167,6 +1241,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _c.seekBy(const Duration(seconds: -10));
           case 'forward':
             _c.seekBy(const Duration(seconds: 10));
+          case 'dismissed':
+            if (_ready) await _c.player.pause();
         }
         return null;
       });
@@ -1203,11 +1279,127 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Enter PiP immediately (the player's PiP button).
   Future<void> _enterPip() async {
     if (!_pipSupported) return;
+    if (Platform.isIOS) {
+      if (!_ready) return;
+      final id = _c.videoController.id.value;
+      if (id == null) return;
+      _iosPipChannel.setMethodCallHandler((call) async {
+        if (!mounted) return;
+        if (call.method == 'setPlaying' && call.arguments is bool) {
+          if (_c.player.state.playing != call.arguments) _c.togglePlay();
+        } else if (call.method == 'skip') {
+          final seconds = call.arguments;
+          if (seconds is num && seconds.isFinite) {
+            _c.seekBy(Duration(milliseconds: (seconds * 1000).round()));
+          }
+        } else if (call.method == 'stopped') {
+          await _iosPipPlaying?.cancel();
+          _iosPipPlaying = null;
+        }
+      });
+      try {
+        final started = await _iosPipChannel.invokeMethod<bool>('start', {
+          'textureId': id,
+          'playing': _c.player.state.playing,
+        });
+        if (mounted && started == true) {
+          await _iosPipPlaying?.cancel();
+          _iosPipPlaying = _c.player.stream.playing.listen((playing) {
+            _iosPipChannel
+                .invokeMethod<void>('playing', playing)
+                .catchError((_) {});
+          });
+        }
+      } on PlatformException {
+        // Playback can continue in the watch page.
+      }
+      return;
+    }
     try {
       await _floating.enable(
         const ImmediatePiP(aspectRatio: Rational.landscape()),
       );
     } catch (_) {}
+  }
+
+  bool _docked = false;
+
+  /// Set while the page reopens from the mini player so it can animate out
+  /// of the dock; cleared after that first frame.
+  bool _restoredFromDock = false;
+
+  /// Back asks the watch page to minimize with its own morph.
+  final _minimizeRequests = ValueNotifier<int>(0);
+
+  bool get _supportsMinimize =>
+      (Platform.isAndroid || Platform.isIOS) &&
+      !sl<AppMode>().isTv &&
+      sl<PlaybackPrefs>().inAppMiniPlayer &&
+      ModalRoute.of(context) is EpisodePlayerRoute;
+
+  VoidCallback? get _minimizeAction =>
+      _supportsMinimize && _ready && !_inPip && _c.state.active != null
+      ? _minimize
+      : null;
+
+  /// [morphed]: the watch page already carried the video to the dock's spot,
+  /// so the mini player appears there as-is instead of fading in.
+  void _minimize({bool morphed = false}) {
+    final route = ModalRoute.of(context);
+    if (route is! EpisodePlayerRoute ||
+        !route.isCurrent ||
+        !_ready ||
+        _c.state.active == null ||
+        _inPip) {
+      return;
+    }
+    final labels = context.l10n;
+    route.dock((video, restore) {
+      setState(() => _docked = true);
+      _stopAmbientSampler();
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      return InAppMiniPlayer(
+        video: video,
+        entranceReady: morphed
+            ? null
+            : _c.videoController.waitUntilFirstFrameRendered,
+        playing: _c.player.state.playing,
+        playingChanges: _c.player.stream.playing,
+        systemPipChanges: Platform.isAndroid && _pipSupported
+            ? _floating.pipStatusStream.map(
+                (status) => status == PiPStatus.enabled,
+              )
+            : null,
+        playPauseLabel: _c.player.state.playing ? labels.pause : labels.play,
+        playLabel: labels.play,
+        pauseLabel: labels.pause,
+        closeLabel: labels.close,
+        restoreLabel: labels.openingLayoutFullscreen,
+        onTogglePlayback: _c.togglePlay,
+        onClose: _leavePlayer,
+        onRestore: () {
+          _lastOrientation = MediaQuery.orientationOf(context);
+          setState(() {
+            _docked = false;
+            _restoredFromDock = true;
+          });
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _restoredFromDock = false,
+          );
+          _orientationApplied = false;
+          if (_presentation == PlayerPresentation.fullscreen) {
+            _applyOrientationWhenCovered();
+          } else {
+            _startAmbientSampler();
+          }
+          _applyPlayerSystemUi();
+          restore();
+        },
+      );
+    });
   }
 
   /// Open the native ExoPlayer activity, then leave this screen. Source errors
@@ -1249,6 +1441,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         startIndex: idx.clamp(0, eps.length - 1),
         resume: widget.resume,
         resolveSources: widget.resolveSources,
+        resolveDownloadedSources: widget.resolveDownloadedSources,
         pollSources: widget.pollSources,
         resumePosition: widget.resumePosition.inMilliseconds,
         peek: widget.peek,
@@ -1259,6 +1452,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         showDescription: widget.showDescription,
         cover: widget.cover,
         coverHeaders: widget.coverHeaders,
+        loadingArtwork: widget.loadingBackdrop,
+        loadingLogo: _loadingLogo,
         category: widget.category ?? 'sub',
         availableCategories: widget.availableCategories,
         history: widget.history,
@@ -1269,9 +1464,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         tmdbIsTv: widget.tmdbIsTv,
         imdbId: widget.imdbId,
         isMovie: widget.isMovie,
-        engineFallback: _canTryOtherPlayer ? _engineFallback : null,
+        // Passed untoggled: the handler yields torrents to mpv even with the
+        // auto-switch toggle off (native can never play them); everything
+        // else still needs the toggle. See tryOtherPlayer.
+        engineFallback: _engineFallback,
         forceInitialResume: widget.engineRecovery,
         onEngineFallback: (failure) => _nativeEngineFailure = failure,
+        onDocked: () {
+          if (!mounted) return null;
+          final route = ModalRoute.of(context);
+          return route is EpisodePlayerRoute ? route.detachForDock() : null;
+        },
       );
       final failure = _nativeEngineFailure;
       if (mounted && failure != null) {
@@ -1376,6 +1579,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
       position: position,
       category: category,
     ), _engineTeardown!.future);
+  }
+
+  /// Manual switch back to the native player from mpv. Only for sources the
+  /// native engine can actually open — a torrent or DRM stays in mpv.
+  bool get _canSwitchToNative {
+    final active = _c.state.active;
+    return widget.onEngineChange != null &&
+        Platform.isAndroid &&
+        !sl<AppMode>().isTv &&
+        active != null &&
+        !active.isDrm &&
+        !isNativeBlockedTorrent(active);
+  }
+
+  Future<void> _switchToNativePlayer() async {
+    final source = _c.state.active;
+    if (!mounted || _switchingEngine || source == null || !_canSwitchToNative) {
+      return;
+    }
+    await _replacePlayerEngine(
+      engine: PlaybackEngine.nativePlayer,
+      episodes: _c.episodes,
+      index: _c.state.currentIndex,
+      source: source,
+      position: _c.player.state.position,
+      category: _c.activeCategory,
+    );
   }
 
   Future<void> _launchExternalThenPop() async {
@@ -1733,6 +1963,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // DRM handoff, load failure) and once the user has confirmed a close.
   void _leavePlayer() {
     if (!mounted) return;
+    if (_docked) {
+      dockedPlayer.value = null;
+      return;
+    }
     final nav = Navigator.of(context);
     if (nav.canPop()) nav.pop();
   }
@@ -1782,6 +2016,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _fullscreenRotationPull.dispose();
+    _minimizeRequests.dispose();
     _orientationTurns?.cancel();
     AppLogger.instance.log(
       '[player-route] dispose ready=$_ready '
@@ -1818,7 +2054,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     sl<CastController>().removeListener(_onCastStateChanged);
     // Disarm auto-PiP so leaving the closed player can't trigger it, and drop
     // the handler so a stray window button can't reach a dead controller.
-    if (_pipSupported) {
+    if (_pipSupported && Platform.isIOS) {
+      _iosPipPlaying?.cancel();
+      _iosPipChannel.setMethodCallHandler(null);
+      _iosPipChannel.invokeMethod<void>('stop').catchError((_) {});
+    } else if (_pipSupported) {
       _pipChannel.setMethodCallHandler(null);
       _pipChannel.invokeMethod('setAutoPip', false);
     }
@@ -1834,10 +2074,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final routeLease = _routeTeardownLease;
     if (_ready) {
       _c.close();
-      unawaited(_c.nativeTeardown.whenComplete(() {
-        routeLease?.release();
-        _engineTeardown?.complete();
-      }));
+      unawaited(
+        _c.nativeTeardown.whenComplete(() {
+          routeLease?.release();
+          _engineTeardown?.complete();
+        }),
+      );
     } else {
       routeLease?.release();
       _engineTeardown?.complete();
@@ -1999,11 +2241,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return system > 24 ? system : 24;
   }
 
-  // Vertical swipe: left half adjusts screen brightness, right half adjusts
-  // volume (MX/Netflix-style). Each drag seeds from the current value, then
+  // The center of landscape video is reserved for returning to the watch page.
+  // The sides adjust brightness and volume. Each drag seeds from the current value, then
   // tracks finger movement; a swipe across ~70% of the height covers 0→100%.
+  void _onVDragDown(DragDownDetails d) {
+    final width = MediaQuery.sizeOf(context).width;
+    final x = d.localPosition.dx;
+    if (_watchPageEnabled &&
+        MediaQuery.orientationOf(context) == Orientation.landscape &&
+        x >= width / 3 &&
+        x <= width * 2 / 3) {
+      _fullscreenExitStartY = _pinching ? double.infinity : d.globalPosition.dy;
+    } else {
+      _fullscreenExitStartY = null;
+    }
+  }
+
   Future<void> _onVDragStart(DragStartDetails d) async {
-    if (!_gesturesEnabled) return;
+    if (_fullscreenExitStartY != null || !_gesturesEnabled) return;
     _lastHudPct = -1; // fresh swipe → don't tick on the first sample
     _dragIsBrightness =
         d.localPosition.dx < MediaQuery.of(context).size.width / 2;
@@ -2028,7 +2283,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onVDragUpdate(DragUpdateDetails d) {
-    if (!_gesturesEnabled || _pinching) return; // ignore once a pinch begins
+    final start = _fullscreenExitStartY;
+    if (start != null) {
+      final distance = d.globalPosition.dy - start;
+      _fullscreenRotationPull.value = distance > 0 ? distance : 0;
+      return;
+    }
+    if (!_gesturesEnabled || _pinching) return;
     final h = MediaQuery.of(context).size.height;
     // Drag up (negative delta) increases the value.
     _dragValue = (_dragValue - d.primaryDelta! / (h * 0.7)).clamp(0.0, 1.0);
@@ -2064,6 +2325,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onVDragEnd(DragEndDetails d) {
+    final start = _fullscreenExitStartY;
+    _fullscreenExitStartY = null;
+    _fullscreenRotationPull.value = 0;
+    if (start != null) {
+      if (d.globalPosition.dy - start >= watchPageRotationSwipeDistance) {
+        _enterWatchPage();
+      }
+      return;
+    }
     if (!_gesturesEnabled) return;
     _hudTimer?.cancel();
     _hudTimer = Timer(const Duration(milliseconds: 500), () {
@@ -2106,6 +2376,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // near 1×). The video is scaled by [_zoom]/[_zoomPan] in build(). ──────────
   void _onPointerDown(PointerDownEvent e) {
     _pointers[e.pointer] = e.position;
+    if (_pointers.length > 1 && _fullscreenExitStartY != null) {
+      _fullscreenExitStartY = double.infinity;
+      _fullscreenRotationPull.value = 0;
+    }
     if (_pointers.length == 2 && !_locked) _startPinch();
   }
 
@@ -2228,19 +2502,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls(); // the top-bar zoom label reflects the new mode
   }
 
-  /// The skip button for the current [pos]: an accurate AniSkip "Skip
-  /// Shows "Skip opening/ending" ONLY when inside a real AniSkip interval
-  /// (anime). No blind manual fallback — movies/series with no skip data never
-  /// show an inaccurate "Skip intro".
-  Widget? _skipButtonFor(Duration pos) {
+  /// A manual skip action for the detected segment at [pos].
+  Widget? _skipButtonFor(Duration pos, {required bool controlsVisible}) {
     if (!_skipIntroEnabled) return null;
     for (final iv in _c.currentSkips) {
       // Hide a beat before the interval ends so it doesn't flicker at the edge.
       if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
-        return _SkipButton(
-          // Only a recap is named. An opening/ending keeps the plain "Skip"
-          // it has always had — no reason to reword what already works.
-          label: isRecapSkip(iv.type) ? 'Skip Recap' : 'Skip',
+        return PlayerSegmentSkipButton(
+          key: ValueKey((_c.state.currentIndex, iv.start, iv.type)),
+          label: skipLabel(iv.type),
+          controlsVisible: controlsVisible,
           onTap: () {
             _c.seekTo(iv.end);
             _bumpControls();
@@ -2524,9 +2795,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       controller: _c.videoController,
                       controls: NoVideoControls,
                       fit: _fits[_fitIndex].$1,
-                      subtitleViewConfiguration: const SubtitleViewConfiguration(
-                        visible: false,
-                      ),
+                      subtitleViewConfiguration:
+                          const SubtitleViewConfiguration(visible: false),
                     ),
                     if (!_c.styledSubtitlesOn)
                       StreamBuilder<List<String>>(
@@ -2553,44 +2823,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
 
-        // Poster-on-start: cover the black surface with the episode's
-        // poster until the first frame decodes, then fade it out. width
-        // emits non-null/>0 once dimensions are known (≈ first frame), and
-        // resets per new media so the poster re-shows each episode.
         Positioned.fill(
           child: StreamBuilder<int?>(
             stream: _c.player.stream.width,
             initialData: _c.player.state.width,
             builder: (context, snap) {
-              final hasFrame = (snap.data ?? 0) > 0;
-              final img =
-                  (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
-                  ? _c.currentEpisode.thumbnail!.trim()
-                  : (widget.cover ?? '');
+              if ((snap.data ?? 0) > 0) return const SizedBox.shrink();
               return IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: hasFrame || img.isEmpty ? 0 : 1,
-                  duration: const Duration(milliseconds: 350),
-                  child: img.isEmpty
-                      ? const ColoredBox(color: Colors.black)
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CachedNetworkImage(
-                              imageUrl: img,
-                              httpHeaders: widget.coverHeaders,
-                              fit: BoxFit.cover,
-                              errorWidget: (c, u, e) =>
-                                  const ColoredBox(color: Colors.black),
-                            ),
-                            // subtle scrim so it reads as a player background
-                            const DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Color(0x33000000),
-                              ),
-                            ),
-                          ],
-                        ),
+                child: _loadingBackdropBody(
+                  _c.state.torrentPhase ??
+                      (_c.state.loadingSources
+                          ? 'Finding streams…'
+                          : 'Starting playback…'),
+                  thumb: _c.currentEpisode.thumbnail,
                 ),
               );
             },
@@ -2856,8 +3101,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onScreenshot: _captureScreenshot,
       sleepActive: _sleepActive,
       onSleep: _openSleepSheet,
+      onMinimize: _minimizeAction,
       onPip: _pipSupported ? _enterPip : null,
+      onSwitchPlayer: _canSwitchToNative ? _switchToNativePlayer : null,
+      ambientActive: sl<PlaybackPrefs>().ambientPlayer,
+      onAmbientToggle: _toggleAmbientPlayer,
     );
+  }
+
+  /// Flips the "Ambient player screen" setting from the player's own More
+  /// sheet — same pref both engines read, so Settings stays in sync too.
+  Future<void> _toggleAmbientPlayer() async {
+    final next = !sl<PlaybackPrefs>().ambientPlayer;
+    await sl<PlaybackPrefs>().setAmbientPlayer(next);
+    if (next) {
+      _startAmbientSampler();
+    } else {
+      _stopAmbientSampler();
+    }
+    if (mounted) setState(() {});
   }
 
   /// Portrait watch page: the stable surface on top, episode info below.
@@ -3103,6 +3365,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final nextNum = next == null ? null : episodeNumberInt(next);
     return PlayerWatchPage(
       video: _buildVideoSurface(),
+      skipOverlay: state.loadingSources || state.torrentPhase != null
+          ? null
+          : (controlsVisible) => StreamBuilder<Duration>(
+              stream: _positionBySecond,
+              initialData: _c.player.state.position,
+              builder: (context, snap) =>
+                  _skipButtonFor(
+                    snap.data ?? Duration.zero,
+                    controlsVisible: controlsVisible,
+                  ) ??
+                  const SizedBox.shrink(),
+            ),
+      edgeToEdge: prefs.portraitVideoEdgeToEdge,
       header: header,
       isMovie: widget.isMovie,
       coverHeaders: widget.coverHeaders,
@@ -3116,7 +3391,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
       firstFrameStream: _c.player.stream.width,
       initialFirstFrame: _c.player.state.width ?? 0,
       ambientFrameStream: _ambientFrames.stream,
+      ambientEnabled: sl<PlaybackPrefs>().ambientPlayer,
       positionStream: _c.player.stream.position,
+      loadingOverlay: _loadingBackdropBody(
+        state.torrentPhase ??
+            (state.loadingSources ? 'Finding streams…' : 'Starting playback…'),
+        thumb: _c.currentEpisode.thumbnail,
+      ),
+      previewSource: () {
+        final uri = _c.previewUri;
+        if (uri == null) return null;
+        if (_c.isLocalMedia) {
+          return (uri: uri, headers: _c.previewHeaders, local: true);
+        }
+        final online = Platform.isAndroid &&
+            !sl<AppMode>().isTv &&
+            (uri.startsWith('http'));
+        return online
+            ? (uri: uri, headers: _c.previewHeaders, local: false)
+            : null;
+      },
       durationStream: _c.player.stream.duration,
       playingStream: _c.player.stream.playing,
       initialPlaying: _c.player.state.playing,
@@ -3170,7 +3464,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onPrevious: () => _c.playPrevious(),
       onNext: () => _c.playNext(),
       onFullscreen: _enterFullscreen,
-      onBack: _handleCloseRequest,
+      onMinimize: _minimizeAction == null
+          ? null
+          // With animations off nothing carried the card to the dock, so the
+          // mini player keeps its first-frame wait.
+          : () => _minimize(morphed: !MediaQuery.disableAnimationsOf(context)),
+      startMinimized: _restoredFromDock,
+      minimizeRequests: _minimizeRequests,
+      onBack: _minimizeAction ?? _handleCloseRequest,
       onServer: _openSourceSheet,
       onAudio: () => _openAudioSubsSheet(focus: AudioSubsFocus.audio),
       onSubtitles: () => _openAudioSubsSheet(focus: AudioSubsFocus.subtitles),
@@ -3537,53 +3838,109 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Build ───────────────────────────────────────────────────────────────
 
-  // Loading backdrop: the episode poster (dimmed under a scrim) behind the
-  // branded spinner, so tapping Play opens straight into a "player that's
-  // loading" instead of a black screen while the source resolves + buffers —
-  // the CloudStream-style instant-player feel. Purely visual; no logic change.
+  String? get _loadingLogo {
+    if (!ThemeController.titleLogo) return null;
+    final supplied = widget.loadingLogo;
+    if (supplied != null && supplied.trim().isNotEmpty) return supplied;
+    if (!sl.isRegistered<TitleLogoService>()) return null;
+    final item = mediaItemForPlayback(
+      sourceId: widget.sourceId,
+      showTitle: widget.showTitle,
+      showUrl: widget.showUrl,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+    );
+    return item == null ? null : sl<TitleLogoService>().cachedLogoFor(item);
+  }
+
+  double? _lastCacheBytes;
+  DateTime? _lastCacheAt;
+
+  /// Bytes/s for the startup loader. `cache-speed` is 0 for HLS (ffmpeg does
+  /// the fetching, not mpv's stream layer), so fall back to how fast the
+  /// demuxer cache is growing between two polls.
+  Future<String?> _loadingSpeed() async {
+    final direct = double.tryParse(await _c.mpvStat('cache-speed') ?? '') ?? 0;
+    if (direct > 0) return '$direct';
+    final fw = double.tryParse(
+      await _c.mpvStat('demuxer-cache-state/fw-bytes') ?? '',
+    );
+    final now = DateTime.now();
+    final prev = _lastCacheBytes;
+    final at = _lastCacheAt;
+    _lastCacheBytes = fw;
+    _lastCacheAt = now;
+    if (fw == null || prev == null || at == null || fw < prev) return null;
+    final secs = now.difference(at).inMilliseconds / 1000;
+    return secs <= 0 ? null : '${(fw - prev) / secs}';
+  }
+
   Widget _loadingBackdropBody(String label, {String? thumb}) {
-    final img = (thumb?.trim().isNotEmpty ?? false)
-        ? thumb!.trim()
-        : (widget.cover ?? '').trim();
+    final backdrop = (widget.loadingBackdrop ?? '').trim();
+    final cover = (widget.cover ?? '').trim();
+    final thumbnail = (thumb ?? '').trim();
+
+    Widget artwork(String url, {required Widget fallback}) {
+      if (url.isEmpty) return fallback;
+      return CachedNetworkImage(
+        imageUrl: url,
+        httpHeaders: playbackArtworkHeaders(url, cover, widget.coverHeaders),
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        memCacheWidth: 1080,
+        errorWidget: (_, _, _) => fallback,
+      );
+    }
+
+    const background = ColoredBox(color: Colors.black);
+    // Show backdrop first, then the episode frame, then the cover.
+    final art = artwork(
+      backdrop,
+      fallback: artwork(
+        thumbnail == backdrop ? '' : thumbnail,
+        fallback: artwork(
+          cover == backdrop || cover == thumbnail ? '' : cover,
+          fallback: background,
+        ),
+      ),
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (img.isNotEmpty)
-          CachedNetworkImage(
-            imageUrl: img,
-            httpHeaders: widget.coverHeaders,
-            fit: BoxFit.cover,
-            // It's a dimmed, scrimmed backdrop behind the video — no need to
-            // hold the full-res poster in memory.
-            memCacheWidth: 1080,
-            errorWidget: (c, u, e) => const ColoredBox(color: Colors.black),
-            placeholder: (c, u) => const ColoredBox(color: Colors.black),
-          ),
-        // Scrim (top→bottom) so the spinner + label stay legible over art.
+        background,
+        art,
+        // Light at the top, heavy at the bottom, so the logo and status stay
+        // legible while the artwork still reads.
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0x99000000), Color(0xCC000000)],
+              stops: [0, 0.35, 0.7, 1],
+              colors: [
+                Color(0x4D000000),
+                Color(0x99000000),
+                Color(0xCC000000),
+                Color(0xE6000000),
+              ],
             ),
           ),
         ),
-        Center(child: BrandLoader(label: label)),
+        PlaybackLoadingTitle(
+          title: widget.showTitle ?? '',
+          logo: _loadingLogo,
+          status: label,
+          speed: _ready ? _loadingSpeed : null,
+        ),
       ],
     );
   }
 
-  /// Portrait twin of [_loadingBackdropBody]: the same boxed surface card
-  /// (cover art dimmed, loader on top) with skeleton rows below — so opening
-  /// from detail lands straight on the portrait page instead of a fullscreen
-  /// cover interlude that then snaps into portrait. Static: no cubit, no
-  /// streams; it only paints until [_startSession]/[_resolveThenStart] flips
-  /// [_ready], at which point the real watch page takes over with everything
-  /// already in place.
   Widget _watchPageLoadingShell() {
-    final cover = (widget.cover ?? '').trim();
-    final title = (widget.showTitle ?? '').trim();
+    final episodes = widget.episodes;
+    final initialThumb = episodes.isEmpty
+        ? null
+        : episodes[widget.startIndex.clamp(0, episodes.length - 1)].thumbnail;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -3601,41 +3958,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (cover.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: cover,
-                          httpHeaders: widget.coverHeaders,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 1080,
-                          errorWidget: (c, u, e) =>
-                              const ColoredBox(color: Colors.black),
-                          placeholder: (c, u) =>
-                              const ColoredBox(color: Colors.black),
-                        )
-                      else
-                        const ColoredBox(color: Colors.black),
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0x99000000), Color(0xCC000000)],
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        bottom: 60,
-                        child: Align(
-                          alignment: const Alignment(0, 0.5),
-                          child: WatchPlayerButton(
-                            icon: Icons.play_arrow_rounded,
-                            label: context.l10n.loading,
-                            size: 56,
-                            iconSize: 32,
-                            busy: true,
-                            onTap: null,
-                          ),
-                        ),
+                      _loadingBackdropBody(
+                        'Finding streams…',
+                        thumb: initialThumb,
                       ),
                       Positioned(
                         top: 6,
@@ -3655,17 +3980,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: title.isEmpty
-                  ? const _ShellBar(width: 220, height: 18)
-                  : Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.headline.copyWith(
-                        color: Colors.white,
-                        fontSize: 20,
-                      ),
-                    ),
+              // Placeholder bar, never the title: the loader above carries the
+              // logo / show name, and a second copy here was the stray title.
+              child: const _ShellBar(width: 220, height: 18),
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
@@ -3709,9 +4026,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_docked) return _buildVideoSurface();
     final route = ModalRoute.of(context);
+    // Callers that hand us a resolver (Continue Watching, history, search…)
+    // need a visible instant "loading" state: the episode list is still on the
+    // wire, so the handoff route alone would leave a dead, silent screen.
+    // Cover art + spinner on BLACK — the native player's own loading look —
+    // until its Activity covers this route. Detail passes episodes directly
+    // and keeps the invisible handoff (no flash).
     if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
-        (route is NativePlayerHandoffRoute || widget.onEngineChange != null)) {
+        widget.episodesResolver != null &&
+        !_ready) {
+      // Gone once the native player shows its first frame: from then on the
+      // window above is see-through while dragged, and this must not show.
+      return ValueListenableBuilder<bool>(
+        valueListenable: phoneNativeStarted,
+        builder: (context, started, _) => started
+            ? const SizedBox.shrink()
+            : Scaffold(
+                backgroundColor: Colors.black,
+                body: _loadingBackdropBody(context.l10n.loading),
+              ),
+      );
+    }
+    if (_chosenPlayer == PlaybackPrefs.androidPlayerId &&
+        ((route is EpisodePlayerRoute && route.nativeHandoff) ||
+            widget.onEngineChange != null)) {
       return const SizedBox.shrink();
     }
     // A Watch Together join that couldn't resolve the room's source — explain
@@ -3778,7 +4118,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 12),
       ),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        // The watch page paints its own black and fades it while it is dragged
+        // into the mini player; a black Scaffold under it would hide the app
+        // that is meant to show through.
+        backgroundColor:
+            _presentation == PlayerPresentation.watchPage &&
+                _c.state.error == null
+            ? Colors.transparent
+            : Colors.black,
         body: BlocConsumer<PlayerCubit, PlayerState>(
           bloc: _c,
           // Nothing ever played: this episode is a dead end, so say so in a
@@ -3815,7 +4162,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             }
             if (state.loadingSources) {
               return _loadingBackdropBody(
-                'Finding the best source…',
+                'Finding streams…',
                 thumb: _c.currentEpisode.thumbnail,
               );
             }
@@ -3887,7 +4234,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _buildVideoSurface(),
+                  WatchPageRotationPreview(
+                    pull: _fullscreenRotationPull,
+                    child: _buildVideoSurface(),
+                  ),
 
                   // 2. Input layer — D-pad on TV; touch gestures on phone.
                   // On TV: PlayerTvControls owns the Focus/key-handler + bottom bar.
@@ -4001,9 +4351,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       setState(() => _holding = false);
                                     }
                                   : null,
+                              onVerticalDragDown: _onVDragDown,
                               onVerticalDragStart: _onVDragStart,
                               onVerticalDragUpdate: _onVDragUpdate,
                               onVerticalDragEnd: _onVDragEnd,
+                              onVerticalDragCancel: () {
+                                _fullscreenExitStartY = null;
+                                _fullscreenRotationPull.value = 0;
+                              },
                               // Nulled rather than no-op'd when the setting is off:
                               // a live recognizer still joins the gesture arena and
                               // would swallow any tap that drifted sideways, so the
@@ -4059,7 +4414,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   StreamBuilder<bool>(
                     stream: _c.player.stream.buffering,
                     builder: (context, snap) {
-                      final show = (snap.data ?? false) && !_controlsVisible;
+                      final show =
+                          (snap.data ?? _c.player.state.buffering) &&
+                          (_c.player.state.width ?? 0) > 0 &&
+                          !_controlsVisible;
                       return IgnorePointer(
                         child: AnimatedOpacity(
                           opacity: show ? 1 : 0,
@@ -4264,7 +4622,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onSettings: _openSettings,
                           barConfig: _barConfig,
                           onZoom: _cycleFit,
+                          onMinimize: _minimizeAction,
                           onPip: _pipSupported ? _enterPip : null,
+                          onSwitchPlayer: _canSwitchToNative
+                              ? _switchToNativePlayer
+                              : null,
                           onSleep: _openSleepSheet,
                           sleepActive: _sleepActive,
                           decoderLabel: _shortDecoder(_c.decoderMode),
@@ -4299,6 +4661,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           enhanceActive:
                               sl<PlaybackPrefs>().videoShaderStyle != 'off',
                           onColorProfile: _openColorProfileSheet,
+                          ambientActive: sl<PlaybackPrefs>().ambientPlayer,
+                          onAmbientToggle: _toggleAmbientPlayer,
                         ),
                       ),
                     )
@@ -4362,15 +4726,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
 
-                  // 6c. Skip button — accurate AniSkip OP/ED intervals (anime) when
-                  // detected. Independent of the controls (stays visible like
-                  // Netflix). No blind/hardcoded fallback — the manual jump-forward
-                  // is MegaSkip (6c-ii) below.
+                  // 6c. Manual skip action for the current segment.
                   if (!_locked && !_upNext && !sl<AppMode>().isTv)
                     StreamBuilder<Duration>(
                       stream: _positionBySecond,
                       builder: (context, snap) {
-                        final btn = _skipButtonFor(snap.data ?? Duration.zero);
+                        final btn = _skipButtonFor(
+                          snap.data ?? Duration.zero,
+                          controlsVisible: _controlsVisible,
+                        );
                         if (btn == null) return const SizedBox.shrink();
                         // Sit low (Netflix-style) while watching; slide up above the
                         // seek bar when the controls are showing so they never clash.
@@ -4498,13 +4862,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 'direct' pops straight through (canPop true); the other two are vetoed
     // and routed to _handleCloseRequest. This catches the back button, the
     // system/gesture back, and the cast-panel back — all of which maybePop().
-    // Fullscreen with the watch page enabled intercepts first: Back drops to
-    // the watch page instead of leaving the player.
+    // Back goes from fullscreen to the watch page, then docks eligible
+    // playback on the mobile app.
     return PopScope(
       canPop:
-          _presentation == PlayerPresentation.fullscreen && _watchPageEnabled
-          ? false
-          : sl<PlaybackPrefs>().closeConfirmation == 'direct',
+          !(_presentation == PlayerPresentation.fullscreen &&
+              _watchPageEnabled) &&
+          !_supportsMinimize &&
+          sl<PlaybackPrefs>().closeConfirmation == 'direct',
       onPopInvokedWithResult: (didPop, _) {
         AppLogger.instance.log(
           '[player-route] pop didPop=$didPop loading=${_c.state.loadingSources} '
@@ -4517,7 +4882,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _enterWatchPage();
           return;
         }
-        _handleCloseRequest();
+        final minimize = _minimizeAction;
+        if (minimize != null) {
+          // On the watch page Back plays the same morph as dragging down.
+          if (_presentation == PlayerPresentation.watchPage) {
+            _minimizeRequests.value++;
+          } else {
+            minimize();
+          }
+        } else {
+          _handleCloseRequest();
+        }
       },
       child: scaffold,
     );

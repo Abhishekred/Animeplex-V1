@@ -21,8 +21,9 @@ part of 'detail_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DetailScreenTv extends StatefulWidget {
-  const DetailScreenTv({super.key, required this.item});
+  const DetailScreenTv({super.key, required this.item, this.onPrefetchEpisode});
   final MediaItem item;
+  final ValueChanged<String>? onPrefetchEpisode;
 
   @override
   State<DetailScreenTv> createState() => _DetailScreenTvState();
@@ -331,7 +332,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final preferred =
         sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    final launchCategory = availableCategories.contains(preferred)
+    final launchCategory =
+        !showSubDubFor(detail) && availableCategories.contains(preferred)
         ? preferred
         : category;
     resolveSources(String u) {
@@ -354,10 +356,16 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       startIndex: index,
       resume: sl<ResumeStore>(),
       resolveSources: resolveSources,
+      pollSources: (url) async =>
+          (await sl<CatalogueRepository>().polledSources(
+            url,
+            sourceId: widget.item.sourceId,
+          )).sources,
       showUrl: widget.item.url,
       showTitle: detail.title,
       cover: detail.cover ?? widget.item.cover,
       coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+      loadingArtwork: detail.banner ?? widget.item.banner,
       category: launchCategory,
       availableCategories: availableCategories,
       malId: detail.malId ?? widget.item.malId,
@@ -691,6 +699,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     // Resume / play label (mirrors _DetailViewState._buildBody).
     final resume = _resumeTarget(eps);
     final resumeIdx = resume.index;
+    if (eps.isNotEmpty &&
+        detail.type != ProviderType.manga &&
+        detail.type != ProviderType.novel) {
+      widget.onPrefetchEpisode?.call(eps[resumeIdx].url);
+    }
     final hasAnyMark = eps.any(
       (e) => store.get(item.sourceId, item.url, e.id) != null,
     );
@@ -1018,54 +1031,123 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                       // horizontal scroll so it never overflows on narrow screens.
                       SizedBox(
                         height: 56,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
+                        child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                           child: Row(
                             children: [
-                              for (
-                                int i = 0;
-                                i < _tabLabels(context).length;
-                                i++
-                              )
-                                Padding(
-                                  padding: const EdgeInsetsDirectional.only(
-                                    end: 4,
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      for (
+                                        int i = 0;
+                                        i < _tabLabels(context).length;
+                                        i++
+                                      )
+                                        Padding(
+                                          padding:
+                                              const EdgeInsetsDirectional.only(
+                                                end: 4,
+                                              ),
+                                          child: TvFocusable(
+                                            key: ValueKey('tv-detail-tab-$i'),
+                                            variant: TvFocusVariant.pill,
+                                            onTap: () =>
+                                                setState(() => _tab = i),
+                                            semanticLabel: _tabLabels(
+                                              context,
+                                            )[i],
+                                            builder: (focused) => Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 14,
+                                                    vertical: 8,
+                                                  ),
+                                              // Excluded — semanticLabel above
+                                              // already announces the tab name.
+                                              child: ExcludeSemantics(
+                                                child: Text(
+                                                  _tabLabels(context)[i],
+                                                  style: AppText.headline.copyWith(
+                                                    fontSize: 15,
+                                                    // Active tab reads from bright
+                                                    // white + bold, not a red tint.
+                                                    color: focused
+                                                        ? Colors.black
+                                                        : (_tab == i
+                                                              ? AppColors
+                                                                    .textPrimary
+                                                              : AppColors
+                                                                    .textSecondary),
+                                                    fontWeight: _tab == i
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                  child: TvFocusable(
-                                    key: ValueKey('tv-detail-tab-$i'),
-                                    variant: TvFocusVariant.pill,
-                                    onTap: () => setState(() => _tab = i),
-                                    semanticLabel: _tabLabels(context)[i],
-                                    builder: (focused) => Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 8,
-                                      ),
-                                      // Excluded — semanticLabel above
-                                      // already announces the tab name.
-                                      child: ExcludeSemantics(
-                                        child: Text(
-                                          _tabLabels(context)[i],
-                                          style: AppText.headline.copyWith(
-                                            fontSize: 15,
-                                            // Active tab reads from bright
-                                            // white + bold, not a red tint.
+                                ),
+                              ),
+                              if (_tab == 0 && showSubDubFor(detail)) ...[
+                                const SizedBox(width: 8),
+                                for (final (i, version, label) in [
+                                  (0, 'sub', context.l10n.sub),
+                                  (1, 'dub', context.l10n.dub),
+                                ])
+                                  Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: 4,
+                                    ),
+                                    child: Semantics(
+                                      selected: category == version,
+                                      child: TvFocusable(
+                                        key: ValueKey('tv-version-$i'),
+                                        variant: TvFocusVariant.pill,
+                                        onTap: () =>
+                                            _changeEpisodeVersion(context, version),
+                                        semanticLabel: label,
+                                        builder: (focused) => DecoratedBox(
+                                          decoration: BoxDecoration(
                                             color: focused
-                                                ? Colors.black
-                                                : (_tab == i
-                                                      ? AppColors.textPrimary
-                                                      : AppColors
-                                                            .textSecondary),
-                                            fontWeight: _tab == i
-                                                ? FontWeight.w700
-                                                : FontWeight.w500,
+                                                ? Colors.transparent
+                                                : category == version
+                                                ? AppColors.accentSoft
+                                                : AppColors.surface2,
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 5,
+                                            ),
+                                            child: ExcludeSemantics(
+                                              child: Text(
+                                                label,
+                                                style: AppText.caption.copyWith(
+                                                  fontSize: 12,
+                                                  color: focused
+                                                      ? Colors.black
+                                                      : AppColors.textPrimary,
+                                                  fontWeight:
+                                                      category == version
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1101,8 +1183,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   _openPlayer(eps, i, detail, category),
                               onDownload: (ep) =>
                                   _pickSourceAndDownload(ep, detail, category),
-                              hasScheduledVideos:
-                                  detail.hasScheduledVideos,
+                              hasScheduledVideos: detail.hasScheduledVideos,
                             ),
                             // ── Cast ─────────────────────────────────────────
                             _CastTab(

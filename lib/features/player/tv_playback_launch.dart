@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
+import '../../core/theme/theme_controller.dart';
 import '../../core/di/injector.dart';
+import '../../core/metadata/title_logo_service.dart';
 import '../../l10n/l10n.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_item.dart';
@@ -17,6 +19,7 @@ import '../../core/zmode/playback_resolver.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../shell/tv_source_picker.dart';
+import 'playback_loading_title.dart';
 import 'tv_av_native_player.dart';
 import 'tv_exo_player_screen.dart';
 import 'tv_native_player.dart';
@@ -79,10 +82,13 @@ Future<void> launchTvPlayback({
   required int startIndex,
   required ResumeStore resume,
   required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+  Future<List<VideoSource>> Function(String episodeUrl)? pollSources,
   String? showUrl,
   String? showTitle,
   String? cover,
   Map<String, String>? coverHeaders,
+  String? loadingArtwork,
+  String? loadingLogo,
   String category = 'sub',
   List<String> availableCategories = const [],
   int? malId,
@@ -174,17 +180,22 @@ Future<void> launchTvPlayback({
     }
   }
 
-  final loadingMessage = (showTitle != null && showTitle.trim().isNotEmpty)
-      ? context.l10n.findingTitle(showTitle.trim())
-      : context.l10n.loading;
+  final startupLogo = ThemeController.titleLogo
+      ? (loadingLogo ??
+            listItem?.titleLogo ??
+            (listItem != null && sl.isRegistered<TitleLogoService>()
+                ? sl<TitleLogoService>().cachedLogoFor(listItem)
+                : null))
+      : null;
   VoidCallback? dismissLoading;
-  // Skip the blocking overlay when the caller already trusts the source
-  // (Continue Watching resume) — the native player loads immediately and
-  // avoids the full-screen "Finding …" cover while sources resolve.
-  if (!skipOverlay && kind != TvPlayerKind.exoView && context.mounted) {
+  if (!skipOverlay && kind == TvPlayerKind.avPlayerSystem && context.mounted) {
     dismissLoading = showTvPlaybackLoadingOverlay(
       context,
-      message: loadingMessage,
+      child: PlaybackLoadingTitle(
+        title: showTitle?.trim() ?? '',
+        logo: startupLogo,
+        status: context.l10n.loading,
+      ),
     );
   }
 
@@ -201,6 +212,9 @@ Future<void> launchTvPlayback({
         showTitle: showTitle,
         cover: cover,
         coverHeaders: coverHeaders,
+        loadingArtwork: loadingArtwork ?? listItem?.banner,
+        loadingLogo: startupLogo,
+        onOpeningPlayer: dismissLoading,
         category: category,
         availableCategories: availableCategories,
         malId: malId,
@@ -236,10 +250,13 @@ Future<void> launchTvPlayback({
         startIndex: startIndex,
         resume: resume,
         resolveSources: trackedResolve,
+        pollSources: pollSources,
         showUrl: showUrl,
         showTitle: showTitle,
         cover: cover,
         coverHeaders: coverHeaders,
+        loadingArtwork: loadingArtwork ?? listItem?.banner,
+        loadingLogo: startupLogo,
         category: category,
         availableCategories: availableCategories,
         malId: malId,
@@ -289,10 +306,13 @@ Future<void> launchTvPlayback({
             startIndex: startIndex,
             resume: resume,
             resolveSources: resolveSources,
+            pollSources: pollSources,
             showUrl: showUrl,
             showTitle: showTitle,
             cover: cover,
             coverHeaders: coverHeaders,
+            loadingArtwork: loadingArtwork,
+            loadingLogo: loadingLogo,
             category: category,
             availableCategories: availableCategories,
             malId: malId,
@@ -326,10 +346,13 @@ Future<void> launchTvPlayback({
               startIndex: startIndex,
               resume: resume,
               resolveSources: resolveSources,
+              pollSources: pollSources,
               showUrl: showUrl,
               showTitle: showTitle,
               cover: cover,
               coverHeaders: coverHeaders,
+              loadingArtwork: loadingArtwork,
+              loadingLogo: loadingLogo,
               category: category,
               availableCategories: availableCategories,
               malId: malId,
@@ -354,6 +377,7 @@ Future<void> launchTvPlayback({
           startIndex: startIndex,
           resume: resume,
           resolveSources: trackedResolve,
+          pollSources: pollSources,
           showUrl: showUrl,
           showTitle: showTitle,
           cover: cover,

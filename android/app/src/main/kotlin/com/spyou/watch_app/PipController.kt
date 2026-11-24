@@ -12,7 +12,6 @@ import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Rational
-import io.flutter.plugin.common.MethodChannel
 
 /**
  * Picture-in-Picture: the window's action buttons, its aspect ratio, and the
@@ -34,6 +33,7 @@ class PipController(private val activity: Activity) {
         const val REWIND = "rewind"
         const val PLAY_PAUSE = "play_pause"
         const val FORWARD = "forward"
+        const val DISMISSED = "dismissed"
 
         /**
          * Android rejects a PiP aspect outside roughly 1:2.39 .. 2.39:1 by
@@ -44,16 +44,34 @@ class PipController(private val activity: Activity) {
         private const val MAX_RATIO = 2.39f
     }
 
-    /** Channel to Dart; set by MainActivity once the engine exists. */
-    var channel: MethodChannel? = null
+    /** Forwards a tapped PiP window action ("rewind"/"play_pause"/"forward"). */
+    var onControl: ((String) -> Unit)? = null
 
+    private val controlAction = "$ACTION.${activity.javaClass.name}"
     private var playing = true
     private var aspect = Rational(16, 9)
     private var receiverRegistered = false
+    private var enteredSinceResume = false
+
+    fun onEntered() {
+        enteredSinceResume = true
+    }
+
+    fun onResumed() {
+        enteredSinceResume = false
+    }
+
+    // The mode-change callback also fires when PiP expands. Only stopping
+    // after entry, without a fullscreen resume, ends the PiP session.
+    fun consumeDismissal(): Boolean {
+        val dismissed = enteredSinceResume
+        enteredSinceResume = false
+        return dismissed
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION) return
+            if (intent?.action != controlAction || !activity.isInPictureInPictureMode) return
             val control = intent.getStringExtra(EXTRA) ?: return
             // Optimistic local flip so the icon swaps immediately rather than
             // waiting for Dart to come back — at PiP size a late icon reads as
@@ -63,13 +81,13 @@ class PipController(private val activity: Activity) {
                 playing = !playing
                 applyParams()
             }
-            channel?.invokeMethod(control, null)
+            onControl?.invoke(control)
         }
     }
 
     fun register() {
         if (receiverRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val filter = IntentFilter(ACTION)
+        val filter = IntentFilter(controlAction)
         // API 33 made the exported flag mandatory. This receiver only ever
         // hears our own PendingIntents, so it stays unexported.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -183,7 +201,7 @@ class PipController(private val activity: Activity) {
         iconRes: Int,
         requestCode: Int,
     ): RemoteAction {
-        val intent = Intent(ACTION)
+        val intent = Intent(controlAction)
             .putExtra(EXTRA, control)
             // Explicit package: an implicit broadcast can't be delivered on
             // newer Android, and this keeps it to our own process regardless.

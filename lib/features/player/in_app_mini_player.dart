@@ -1,0 +1,593 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
+
+import '../../l10n/l10n.dart';
+
+final dockedPlayer = ValueNotifier<InAppMiniPlayer?>(null);
+
+const _defaultDockWidth = 216.0;
+
+/// Where the mini player was when it was last expanded, in screen
+/// coordinates; the watch page opens out of this rect.
+Rect? lastDockedRect;
+
+/// Where a freshly docked mini player lands, in the host's coordinates.
+///
+/// Mirrors the layout in [_InAppMiniPlayerState] so the watch page can morph
+/// into it while the finger is still down, and hand over without a jump.
+Rect defaultDockRect(
+  Size size,
+  EdgeInsets inset, {
+  bool rtl = false,
+  double keyboard = 0,
+}) {
+  final area = EdgeInsets.fromLTRB(
+    math.max(inset.left, 12),
+    math.max(inset.top, 12),
+    math.max(inset.right, 12),
+    math.max(inset.bottom, 96 + keyboard),
+  );
+  final areaWidth = size.width - area.horizontal;
+  final areaHeight = size.height - area.vertical;
+  final maxWidth = math.min(360.0, math.min(areaWidth, areaHeight * 16 / 9));
+  final width = math.min(_defaultDockWidth, maxWidth);
+  final height = width * 9 / 16;
+  return Rect.fromLTWH(
+    area.left + (rtl ? 0 : areaWidth - width),
+    area.top + areaHeight - height,
+    width,
+    height,
+  );
+}
+
+/// Displays the active dock over routes while allowing taps outside the card.
+class InAppMiniPlayerHost extends StatelessWidget {
+  const InAppMiniPlayerHost({
+    super.key,
+    required this.dockedPlayer,
+    required this.child,
+  });
+
+  final ValueNotifier<InAppMiniPlayer?> dockedPlayer;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<InAppMiniPlayer?>(
+      valueListenable: dockedPlayer,
+      child: child,
+      builder: (context, player, child) =>
+          Stack(fit: StackFit.expand, children: [child!, ?player]),
+    );
+  }
+}
+
+/// A floating video card whose parent supplies the available browsing area.
+class InAppMiniPlayer extends StatefulWidget {
+  const InAppMiniPlayer({
+    super.key,
+    required this.video,
+    this.retainedRoute,
+    this.entranceReady,
+    this.entranceAnimated = true,
+    required this.playing,
+    this.playingChanges,
+    this.systemPipChanges,
+    this.playLabel,
+    this.pauseLabel,
+    required this.playPauseLabel,
+    required this.closeLabel,
+    required this.restoreLabel,
+    required this.onTogglePlayback,
+    required this.onClose,
+    required this.onRestore,
+  });
+
+  final Widget video;
+  final Widget? retainedRoute;
+  final Future<void>? entranceReady;
+
+  /// False when the card already arrived here by itself (the native player
+  /// morphed into this spot): it still waits for the first frame, then shows
+  /// at once instead of fading and scaling in a second time.
+  final bool entranceAnimated;
+  final bool playing;
+  final Stream<bool>? playingChanges;
+  final Stream<bool>? systemPipChanges;
+  final String? playLabel;
+  final String? pauseLabel;
+  final String playPauseLabel;
+  final String closeLabel;
+  final String restoreLabel;
+  final VoidCallback onTogglePlayback;
+  final VoidCallback onClose;
+  final VoidCallback onRestore;
+
+  @override
+  State<InAppMiniPlayer> createState() => _InAppMiniPlayerState();
+}
+
+class _InAppMiniPlayerState extends State<InAppMiniPlayer>
+    with WidgetsBindingObserver {
+  bool _trailing = true;
+  bool _bottom = true;
+  Offset? _dragPosition;
+  double _preferredWidth = _defaultDockWidth;
+  double _gestureWidth = _defaultDockWidth;
+  double? _pinchSurfaceWidth;
+  bool _wasSystemPip = false;
+  bool _showControls = false;
+  final _cardKey = GlobalKey();
+  late final _entranceReady = widget.entranceReady?.timeout(
+    const Duration(milliseconds: 450),
+    onTimeout: () {},
+  );
+
+  bool _entranceStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_entranceStarted &&
+        widget.entranceReady != null &&
+        state == AppLifecycleState.resumed) {
+      setState(() {});
+    }
+  }
+
+  static const _settleDuration = Duration(milliseconds: 320);
+
+  Widget _control(
+    String label,
+    IconData icon,
+    VoidCallback pressed, {
+    double size = 20,
+  }) {
+    return Semantics(
+      label: label,
+      child: IconButton(
+        color: Colors.white,
+        iconSize: size,
+        onPressed: pressed,
+        icon: Icon(icon),
+      ),
+    );
+  }
+
+  void _expand() {
+    // The page morphs out of wherever the card is now, so remember it.
+    final box = _cardKey.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      lastDockedRect = box.localToGlobal(Offset.zero) & box.size;
+    }
+    widget.onRestore();
+  }
+
+  Widget _withEntrance({
+    required bool animate,
+    required Alignment alignment,
+    required Widget child,
+  }) {
+    if (_entranceReady == null) return child;
+    return FutureBuilder<void>(
+      future: _entranceReady,
+      builder: (context, snapshot) {
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        // A card that morphed in sits under the native player, which is still
+        // in front (so the app is not "resumed" yet): show as soon as it is
+        // ready rather than after the hand-over.
+        if (!animate ||
+            (snapshot.connectionState == ConnectionState.done &&
+                (!widget.entranceAnimated ||
+                    lifecycle == null ||
+                    lifecycle == AppLifecycleState.resumed))) {
+          _entranceStarted = true;
+        }
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: _entranceStarted ? 1 : 0),
+          duration: !animate || !widget.entranceAnimated
+              ? Duration.zero
+              : const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          builder: (context, progress, child) {
+            final opacity = progress;
+            return IgnorePointer(
+              ignoring: !_entranceStarted,
+              child: Opacity(
+                // Paint the native view while its first frame is pending.
+                opacity: .01 + .99 * opacity,
+                child: Transform.translate(
+                  offset:
+                      Offset(-12 * alignment.x, -28 * alignment.y) *
+                      (1 - progress).abs(),
+                  child: Transform.scale(
+                    alignment: alignment,
+                    scale: .90 + .10 * progress,
+                    child: child,
+                  ),
+                ),
+              ),
+            );
+          },
+          child: child,
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<bool>(
+      stream: widget.systemPipChanges,
+      builder: (context, snapshot) => _buildCard(snapshot.data == true),
+    );
+  }
+
+  Widget _buildCard(bool systemPip) {
+    final pipChanged = systemPip != _wasSystemPip;
+    _wasSystemPip = systemPip;
+    if (systemPip) {
+      _showControls = false;
+      _pinchSurfaceWidth = null;
+    }
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomClearance = 96 + keyboardInset;
+    final dropClearance =
+        math.max(bottomInset, bottomClearance) -
+        math.max(bottomInset, keyboardInset);
+    return SafeArea(
+      left: !systemPip,
+      top: !systemPip,
+      right: !systemPip,
+      bottom: !systemPip,
+      minimum: systemPip
+          ? EdgeInsets.zero
+          // shortcut: fixed clearance for the phone navigation bar, measure the
+          // shell's dock if it starts covering taller navigation layouts.
+          : EdgeInsets.fromLTRB(12, 12, 12, bottomClearance),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = math.min(
+            360.0,
+            math.min(constraints.maxWidth, constraints.maxHeight * 16 / 9),
+          );
+          final minWidth = math.min(144.0, maxWidth);
+          final width = systemPip
+              ? constraints.maxWidth
+              : math.min(_preferredWidth, maxWidth);
+          final height = systemPip ? constraints.maxHeight : width * 9 / 16;
+          final surfaceWidth = _pinchSurfaceWidth ?? width;
+          final surfaceHeight = systemPip ? height : surfaceWidth * 9 / 16;
+          final right = constraints.maxWidth - width;
+          final bottom = math.max(0.0, constraints.maxHeight - height);
+          final rtl = Directionality.of(context) == TextDirection.rtl;
+          final corner = Offset(
+            _trailing != rtl ? right : 0,
+            _bottom ? bottom : 0,
+          );
+          // One limit for how far below the dock the card may go, shared by
+          // the drag, the drawn position and the dismiss threshold.
+          final maxDrop = math.max(0.0, dropClearance - 38);
+          final dismissDistance = math.max(
+            1.0,
+            math.min((height / 2).clamp(48.0, 72.0), maxDrop * .85),
+          );
+          double dragPastBottom() => _pinchSurfaceWidth == null
+              ? (_dragPosition?.dy ?? bottom) - bottom
+              : 0;
+          final showDismissHint = !systemPip && dragPastBottom() > 0;
+          bool canDismiss() =>
+              maxDrop > 0 && dragPastBottom() >= dismissDistance;
+          // Card fades and shrinks as it's pulled toward dismissal.
+          final pull = (dragPastBottom() / dismissDistance).clamp(0.0, 1.0);
+          Offset clamp(
+            Offset offset,
+            double cardWidth, {
+            double extraBottom = 0,
+          }) => Offset(
+            offset.dx.clamp(
+              0.0,
+              math.max(0.0, constraints.maxWidth - cardWidth),
+            ),
+            offset.dy.clamp(
+              0.0,
+              math.max(0.0, constraints.maxHeight - cardWidth * 9 / 16) +
+                  extraBottom,
+            ),
+          );
+          final position = systemPip
+              ? Offset.zero
+              : clamp(
+                  _dragPosition ?? corner,
+                  width,
+                  // Leave room for the hint below the moving video.
+                  extraBottom: maxDrop,
+                );
+
+          void snap() {
+            final currentWidth = math.min(_preferredWidth, maxWidth);
+            final released = clamp(_dragPosition ?? corner, currentWidth);
+            setState(() {
+              _trailing =
+                  (released.dx >= (constraints.maxWidth - currentWidth) / 2) !=
+                  rtl;
+              _bottom =
+                  released.dy >=
+                  (constraints.maxHeight - currentWidth * 9 / 16) / 2;
+              _dragPosition = null;
+              _pinchSurfaceWidth = null;
+            });
+          }
+
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (showDismissHint)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8 - dropClearance,
+                  height: 40,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Builder(
+                        builder: (context) {
+                          final scheme = Theme.of(context).colorScheme;
+                          final ready = canDismiss();
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            decoration: BoxDecoration(
+                              color: ready
+                                  ? scheme.errorContainer
+                                  : scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  ready
+                                      ? Icons.close_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 18,
+                                  color: ready
+                                      ? scheme.onErrorContainer
+                                      : scheme.onSurface,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  ready
+                                      ? context.l10n.releaseToDismiss
+                                      : context.l10n.dragDownToDismiss,
+                                  style: Theme.of(context).textTheme.labelMedium
+                                      ?.copyWith(
+                                        color: ready
+                                            ? scheme.onErrorContainer
+                                            : scheme.onSurface,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              AnimatedPositioned(
+                duration:
+                    !reduceMotion &&
+                        !pipChanged &&
+                        !systemPip &&
+                        _dragPosition == null
+                    ? _settleDuration
+                    : Duration.zero,
+                curve: const _DockSpringCurve(),
+                left: position.dx,
+                top: position.dy,
+                child: Transform.scale(
+                  scale: 1 - .1 * pull,
+                  child: _withEntrance(
+                    animate: !systemPip && !reduceMotion,
+                    alignment: Alignment(
+                      _trailing != rtl ? 1 : -1,
+                      _bottom ? 1 : -1,
+                    ),
+                    child: Transform.scale(
+                      alignment: Alignment.topLeft,
+                      scale: surfaceWidth > 0 ? width / surfaceWidth : 1,
+                      child: SizedBox(
+                        width: surfaceWidth,
+                        height: surfaceHeight,
+                        child: Material(
+                          key: _cardKey,
+                          color: Colors.black,
+                          elevation: 6,
+                          borderRadius: BorderRadius.circular(
+                            systemPip ? 0 : 16,
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              IgnorePointer(child: widget.video),
+                              if (widget.retainedRoute case final route?)
+                                Offstage(child: route),
+                              if (!systemPip)
+                                Semantics(
+                                  button: true,
+                                  label: MaterialLocalizations.of(
+                                    context,
+                                  ).moreButtonTooltip,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: width < 144
+                                        ? _expand
+                                        : () => setState(
+                                            () =>
+                                                _showControls = !_showControls,
+                                          ),
+                                    onScaleStart: (_) {
+                                      final card = _cardKey.currentContext
+                                          ?.findRenderObject();
+                                      final bounds = context.findRenderObject();
+                                      final visiblePosition =
+                                          card is RenderBox &&
+                                              bounds is RenderBox
+                                          ? card.localToGlobal(
+                                              Offset.zero,
+                                              ancestor: bounds,
+                                            )
+                                          : position;
+                                      setState(() {
+                                        _showControls = false;
+                                        _gestureWidth = width;
+                                        _dragPosition = visiblePosition;
+                                      });
+                                    },
+                                    onScaleUpdate: (details) => setState(() {
+                                      final currentWidth = math.min(
+                                        _preferredWidth,
+                                        maxWidth,
+                                      );
+                                      final origin = _dragPosition ?? corner;
+                                      if (details.pointerCount < 2) {
+                                        _dragPosition = clamp(
+                                          origin + details.focalPointDelta,
+                                          currentWidth,
+                                          extraBottom:
+                                              _pinchSurfaceWidth == null
+                                              ? maxDrop
+                                              : 0,
+                                        );
+                                        return;
+                                      }
+
+                                      _pinchSurfaceWidth ??= currentWidth;
+                                      final nextWidth =
+                                          (_gestureWidth * details.scale).clamp(
+                                            minWidth,
+                                            maxWidth,
+                                          );
+                                      final change = currentWidth - nextWidth;
+                                      _preferredWidth = nextWidth;
+                                      _dragPosition = clamp(
+                                        origin +
+                                            Offset(
+                                              _trailing != rtl ? change : 0,
+                                              _bottom ? change * 9 / 16 : 0,
+                                            ),
+                                        nextWidth,
+                                      );
+                                    }),
+                                    onScaleEnd: (details) {
+                                      // A quick downward flick dismisses too,
+                                      // once the card is pulled below its dock.
+                                      final dismiss =
+                                          details.pointerCount == 0 &&
+                                          (canDismiss() ||
+                                              (dragPastBottom() >
+                                                      dismissDistance / 2 &&
+                                                  details
+                                                          .velocity
+                                                          .pixelsPerSecond
+                                                          .dy >
+                                                      700));
+                                      snap();
+                                      if (dismiss) widget.onClose();
+                                    },
+                                  ),
+                                ),
+                              if (!systemPip &&
+                                  _showControls &&
+                                  width >= 144) ...[
+                                const IgnorePointer(
+                                  child: ColoredBox(color: Colors.black38),
+                                ),
+                                Align(
+                                  alignment: Alignment.topRight,
+                                  child: _control(
+                                    widget.restoreLabel,
+                                    Icons.open_in_full_rounded,
+                                    _expand,
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.topLeft,
+                                  child: _control(
+                                    widget.closeLabel,
+                                    Icons.close_rounded,
+                                    widget.onClose,
+                                  ),
+                                ),
+                                Center(
+                                  child: StreamBuilder<bool>(
+                                    stream: widget.playingChanges,
+                                    initialData: widget.playing,
+                                    builder: (context, snapshot) {
+                                      final playing =
+                                          snapshot.data ?? widget.playing;
+                                      return _control(
+                                        (playing
+                                                ? widget.pauseLabel
+                                                : widget.playLabel) ??
+                                            widget.playPauseLabel,
+                                        playing
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        widget.onTogglePlayback,
+                                        size: 32,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// A critically damped spring settles without sending the card beyond the corner.
+class _DockSpringCurve extends Curve {
+  const _DockSpringCurve();
+
+  static final _spring = SpringSimulation(
+    SpringDescription.withDampingRatio(mass: 1, stiffness: 360),
+    0,
+    1,
+    0,
+  );
+
+  @override
+  double transformInternal(double t) => _spring.x(t * .32) / _spring.x(.32);
+}

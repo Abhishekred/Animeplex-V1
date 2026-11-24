@@ -1,16 +1,22 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../detail/episode_filter.dart';
 import '../../l10n/l10n.dart';
+import 'episode_player_route.dart';
+import 'in_app_mini_player.dart';
+import 'seek_preview.dart';
 import 'watch_page_info.dart';
 import 'watch_page_motion.dart';
 
@@ -22,6 +28,8 @@ class PlayerWatchPage extends StatefulWidget {
   const PlayerWatchPage({
     super.key,
     required this.video,
+    this.skipOverlay,
+    this.edgeToEdge = false,
     required this.header,
     this.coverHeaders,
     this.loading = false,
@@ -31,6 +39,7 @@ class PlayerWatchPage extends StatefulWidget {
     this.firstFrameStream,
     this.initialFirstFrame = 0,
     this.ambientFrameStream,
+    this.ambientEnabled = true,
     required this.positionStream,
     required this.durationStream,
     required this.playingStream,
@@ -50,12 +59,17 @@ class PlayerWatchPage extends StatefulWidget {
     this.coverUrl,
     required this.onTogglePlay,
     required this.onSeek,
+    this.loadingOverlay,
+    this.previewSource,
     this.onSeekBy,
     this.doubleTapSeconds = 10,
     this.onHoldSpeedChanged,
     required this.onPrevious,
     required this.onNext,
     required this.onFullscreen,
+    this.onMinimize,
+    this.startMinimized = false,
+    this.minimizeRequests,
     required this.onBack,
     required this.onServer,
     required this.onAudio,
@@ -76,6 +90,8 @@ class PlayerWatchPage extends StatefulWidget {
 
   /// The one video surface, built by the parent. This page only sizes it.
   final Widget video;
+  final Widget Function(bool controlsVisible)? skipOverlay;
+  final bool edgeToEdge;
   final WatchPageHeader header;
   final Map<String, String>? coverHeaders;
 
@@ -87,14 +103,17 @@ class PlayerWatchPage extends StatefulWidget {
   final bool initialBuffering;
 
   /// First-frame signal (player width; null = latch off). While no frame has
-  /// decoded the spinner holds — even if the loading flag lapses between
-  /// progressive resolves, and no tap can dismiss it.
+  /// decoded, the startup artwork takes the place of transport controls.
   final Stream<int?>? firstFrameStream;
   final int initialFirstFrame;
 
   /// Live video frame for the ambient glow (see [_ambientBackdrop]). Null
   /// stream = still art only.
   final Stream<Uint8List?>? ambientFrameStream;
+
+  /// Off hides the glow entirely (also skips the cover-art sample below) —
+  /// the "Ambient player screen" setting.
+  final bool ambientEnabled;
   final Stream<Duration> positionStream;
   final Stream<Duration?> durationStream;
   final Stream<bool> playingStream;
@@ -124,12 +143,30 @@ class PlayerWatchPage extends StatefulWidget {
 
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+
+  /// Startup loader (backdrop, logo, status) drawn over the video until its
+  /// first frame lands.
+  final Widget? loadingOverlay;
+
+  /// Where scrub-preview frames come from; null when this source can't be
+  /// previewed (TV, iOS, no url).
+  final ({String uri, Map<String, String>? headers, bool local})? Function()?
+  previewSource;
   final ValueChanged<Duration>? onSeekBy;
   final int doubleTapSeconds;
   final ValueChanged<bool>? onHoldSpeedChanged;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onFullscreen;
+  final VoidCallback? onMinimize;
+
+  /// Opens already sitting in the mini player's spot and animates to full
+  /// size, as when the mini player is tapped open.
+  final bool startMinimized;
+
+  /// Notifies when something outside (system back) wants the page to
+  /// minimize with the same morph as the back chevron.
+  final Listenable? minimizeRequests;
   final VoidCallback onBack;
   final VoidCallback onServer;
   final VoidCallback onAudio;
@@ -151,10 +188,22 @@ enum _WatchEpisodeAction { reverse, autoplay }
 
 enum _WatchRowAction { watched, mirror }
 
-class _PlayerWatchPageState extends State<PlayerWatchPage> {
+class _PlayerWatchPageState extends State<PlayerWatchPage>
+    with SingleTickerProviderStateMixin {
   bool _controlsVisible = true;
   bool _expanded = false;
   Timer? _videoTapTimer;
+  Offset _videoSwipeStart = Offset.zero;
+  final _rotationPull = ValueNotifier(0.0);
+
+  /// 0 = full watch page, 1 = sitting in the mini player's spot. The finger
+  /// drives it while pulling down; a spring finishes or reverses the move.
+  final _minimize = ValueNotifier(0.0);
+  late final AnimationController _settle;
+  Rect _videoRect = Rect.zero;
+  Rect _dockRect = Rect.zero;
+  bool _minimizing = false;
+  Rect? _restoreFrom;
   Timer? _videoSeekTimer;
   Timer? _videoFeedbackTimer;
   int _lastVideoTapSide = 0;
@@ -167,6 +216,25 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   late bool _playing = widget.initialPlaying;
   StreamSubscription<bool>? _playingSub;
   Timer? _hideTimer;
+
+  // Held locally while the finger is down, so the thumb follows it instead of
+  // snapping back to the 4Hz sampled position (that was the lag), and so we
+  // seek once on release rather than flooding mpv on every move.
+  double? _dragMs;
+  SeekPreview? _preview;
+
+  void _startPreview() {
+    final src = widget.previewSource?.call();
+    if (src == null) return;
+    if (_preview?.uri != src.uri) {
+      _preview?.dispose();
+      _preview = SeekPreview(
+        uri: src.uri,
+        headers: src.headers,
+        local: src.local,
+      );
+    }
+  }
 
   late final ScrollController _scroll;
   final ValueNotifier<double> _ambientOpacity = ValueNotifier(1);
@@ -209,20 +277,35 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   @override
   void initState() {
     super.initState();
+    _settle = AnimationController.unbounded(vsync: this)
+      ..addListener(() => _minimize.value = _settle.value.clamp(0.0, 1.0));
+    widget.minimizeRequests?.addListener(_minimizeByTap);
+    if (widget.startMinimized) {
+      _restoreFrom = lastDockedRect;
+      _minimize.value = 1;
+      _minimizing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _finishMinimize(0);
+      });
+    }
     _scroll = ScrollController()..addListener(_fadeAmbient);
     _frameUp = widget.firstFrameStream == null || widget.initialFirstFrame > 0;
     _frameSub = widget.firstFrameStream?.listen((w) {
       if (!mounted || _frameUp || (w ?? 0) <= 0) return;
       setState(() => _frameUp = true);
     });
-    _ambientSub = widget.ambientFrameStream?.listen((bytes) {
-      if (!mounted || bytes == null || bytes.isEmpty) return;
-      unawaited(_applyAmbientBytes(bytes));
-    });
+    if (widget.ambientEnabled) {
+      _ambientSub = widget.ambientFrameStream?.listen((bytes) {
+        if (!mounted || bytes == null || bytes.isEmpty) return;
+        unawaited(_applyAmbientBytes(bytes));
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToCurrent();
-      _sampledCover = null;
-      unawaited(_sampleCoverArt());
+      if (widget.ambientEnabled) {
+        _sampledCover = null;
+        unawaited(_sampleCoverArt());
+      }
     });
     _playingSub = widget.playingStream.listen((p) {
       if (!mounted || p == _playing) return;
@@ -245,8 +328,13 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     _playingSub?.cancel();
     _frameSub?.cancel();
     _ambientSub?.cancel();
+    _preview?.dispose();
     _scroll.dispose();
     _ambientOpacity.dispose();
+    _rotationPull.dispose();
+    widget.minimizeRequests?.removeListener(_minimizeByTap);
+    _settle.dispose();
+    _minimize.dispose();
     super.dispose();
   }
 
@@ -565,29 +653,108 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w = size.width - 24;
+    final padding = MediaQuery.paddingOf(context);
+    final sideInset = widget.edgeToEdge ? 0.0 : 12.0;
+    final w = size.width - padding.horizontal - 2 * sideInset;
     final videoH = (w * 9 / 16).clamp(0.0, size.height * 0.38);
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: MediaQuery.paddingOf(context).top + videoH + 4,
-            child: Stack(children: [_ambientBackdrop()]),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                _video(videoH),
-                Expanded(child: _info()),
-              ],
+    _videoRect = Rect.fromLTWH(
+      padding.left + sideInset,
+      padding.top + 4,
+      w,
+      videoH,
+    );
+    _dockRect =
+        _restoreFrom ??
+        defaultDockRect(
+          size,
+          padding,
+          rtl: Directionality.of(context) == TextDirection.rtl,
+          keyboard: MediaQuery.viewInsetsOf(context).bottom,
+        );
+    return ValueListenableBuilder<double>(
+      valueListenable: _minimize,
+      child: _info(),
+      builder: (context, p, info) => Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // The page's black fades away so the screen underneath shows.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(color: Colors.black.withValues(alpha: 1 - p)),
+              ),
             ),
-          ),
-        ],
+            // Everything but the video fades out and slides away first.
+            Opacity(
+              opacity: (1 - p * 3).clamp(0.0, 1.0),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: padding.top + videoH + 4,
+                    child: Stack(children: [_ambientBackdrop()]),
+                  ),
+                  SafeArea(
+                    bottom: false,
+                    child: Column(
+                      children: [
+                        SizedBox(height: videoH + 4),
+                        Expanded(
+                          child: IgnorePointer(
+                            ignoring: p > 0,
+                            child: Transform.translate(
+                              offset: Offset(0, p * 80),
+                              child: info,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: _morphing(
+                  p,
+                  padding,
+                  sideInset,
+                  _video(videoH, sideInset),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Moves the video card along a straight line to the mini player's spot,
+  /// shrinking as it goes. [p] is the 0..1 progress of that move.
+  Widget _morphing(
+    double p,
+    EdgeInsets padding,
+    double sideInset,
+    Widget child,
+  ) {
+    // Always wrapped (identity at 0) so the video never remounts mid-drag.
+    final scale = ui.lerpDouble(1, _dockRect.width / _videoRect.width, p)!;
+    final at = Offset.lerp(_videoRect.topLeft, _dockRect.topLeft, p)!;
+    // The box scales about its own top-left; the card sits (sideInset, 4)
+    // inside it.
+    final box = Offset(padding.left, padding.top);
+    final shift = at - (box + Offset(sideInset, 4) * scale);
+    return Transform.translate(
+      offset: shift,
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.topLeft,
+        child: child,
       ),
     );
   }
@@ -596,7 +763,7 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   /// Both glows fade with scrolling; the lower one ends below Comments.
   Widget _ambientBackdrop({bool belowVideo = false}) {
-    if (_glowRev <= 0) return const SizedBox.shrink();
+    if (!widget.ambientEnabled || _glowRev <= 0) return const SizedBox.shrink();
     return Positioned.fill(
       child: IgnorePointer(
         child: ValueListenableBuilder<double>(
@@ -645,15 +812,124 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
     );
   }
 
-  /// Mini player card: inset box with rounded corners, not full-bleed. Same
-  /// transparent scrims as the fullscreen player wash over it so the chrome
-  /// stays legible on bright frames.
-  Widget _video(double h) {
+  /// Transparent scrims keep the controls legible on bright frames.
+  Widget _video(double h, double sideInset) => GestureDetector(
+    dragStartBehavior: DragStartBehavior.down,
+    onVerticalDragStart: (details) {
+      _videoTapTimer?.cancel();
+      _videoSwipeStart = details.globalPosition;
+      // Grabbing the card mid-spring hands control back to the finger.
+      if (_minimizing) _settle.stop();
+    },
+    onVerticalDragUpdate: (details) {
+      final movement = _videoSwipeStart - details.globalPosition;
+      final vertical = movement.dy.abs() > movement.dx.abs();
+      final down = vertical && movement.dy < 0 && widget.onMinimize != null;
+      _rotationPull.value = vertical && movement.dy > 0 ? -movement.dy : 0;
+      if (down) {
+        _setMinimizing(true);
+        _minimize.value = (-movement.dy / _minimizeTravel).clamp(0.0, 1.0);
+      } else if (_minimizing) {
+        _minimize.value = 0;
+      }
+    },
+    onVerticalDragCancel: () {
+      _rotationPull.value = 0;
+      if (_minimizing) _finishMinimize(0);
+    },
+    onVerticalDragEnd: (details) {
+      final movement = _videoSwipeStart - details.globalPosition;
+      _rotationPull.value = 0;
+      final vertical = movement.dy.abs() > movement.dx.abs();
+      final velocity = details.primaryVelocity ?? 0;
+      if (_minimizing) {
+        // Past a quarter of the way, or flicked down, it finishes; flicking
+        // back up cancels even a long pull.
+        final commit =
+            velocity > 800 || (velocity > -800 && _minimize.value >= .25);
+        _finishMinimize(commit ? velocity : velocity, commit: commit);
+        return;
+      }
+      if (movement.dy.abs() < watchPageRotationSwipeDistance || !vertical) {
+        return;
+      }
+      if (movement.dy > 0) widget.onFullscreen();
+    },
+    child: WatchPageRotationPreview(
+      pull: _rotationPull,
+      child: _videoCard(h, sideInset),
+    ),
+  );
+
+  double get _minimizeTravel => math.max(1.0, _dockRect.top - _videoRect.top);
+
+  /// Lets the screen underneath show while the card is away from the top.
+  void _setMinimizing(bool value) {
+    if (_minimizing == value) return;
+    _minimizing = value;
+    final route = ModalRoute.of(context);
+    if (route is EpisodePlayerRoute) route.setSeeThrough(value);
+  }
+
+  /// Springs the morph to the mini player ([commit]) or back to full size.
+  void _finishMinimize(double velocity, {bool commit = false}) {
+    final from = _minimize.value;
+    final target = commit ? 1.0 : 0.0;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _minimize.value = target;
+      _settled(commit);
+      return;
+    }
+    _settle.value = from;
+    _settle
+        .animateWith(
+          SpringSimulation(
+            SpringDescription.withDampingRatio(
+              mass: 1,
+              stiffness: 320,
+              ratio: 1,
+            ),
+            from,
+            target,
+            velocity / _minimizeTravel,
+          ),
+        )
+        .whenComplete(() {
+          if (mounted) _settled(commit);
+        });
+  }
+
+  void _settled(bool commit) {
+    if (commit) {
+      widget.onMinimize?.call();
+      // If the host refused (nothing to dock), return to the full page.
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+        _minimize.value = 0;
+        _setMinimizing(false);
+      }
+    } else {
+      _minimize.value = 0;
+      _restoreFrom = null;
+      _setMinimizing(false);
+    }
+  }
+
+  /// Back chevron: the same morph, without a finger.
+  void _minimizeByTap() {
+    // Only a move that is actually running blocks this; a stale flag must not.
+    if (_settle.isAnimating || widget.onMinimize == null) return;
+    _setMinimizing(true);
+    _finishMinimize(0, commit: true);
+  }
+
+  Widget _videoCard(double h, double sideInset) {
     return Padding(
       // SafeArea already clears the status bar — no double inset.
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      padding: EdgeInsets.fromLTRB(sideInset, 4, sideInset, 0),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: widget.edgeToEdge
+            ? BorderRadius.zero
+            : BorderRadius.circular(18),
         child: SizedBox(
           key: const ValueKey('watch-video'),
           height: h,
@@ -662,6 +938,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
             fit: StackFit.expand,
             children: [
               widget.video,
+              if (!_frameUp && widget.loadingOverlay != null)
+                Positioned.fill(child: widget.loadingOverlay!),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -755,7 +1033,9 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                       label: context.l10n.back,
                       size: 32,
                       iconSize: 18,
-                      onTap: widget.onBack,
+                      onTap: widget.onMinimize != null
+                          ? _minimizeByTap
+                          : widget.onBack,
                     ),
                   ),
                 ),
@@ -766,8 +1046,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   stream: widget.bufferingStream,
                   initialData: widget.initialBuffering,
                   builder: (context, snapshot) {
-                    final busy =
-                        widget.loading || !_frameUp || snapshot.data == true;
+                    if (!_frameUp) return const SizedBox.shrink();
+                    final busy = widget.loading || snapshot.data == true;
                     return AnimatedOpacity(
                       opacity: _controlsVisible || busy ? 1 : 0,
                       duration: const Duration(milliseconds: 200),
@@ -858,6 +1138,12 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                     ),
                   ),
                 ),
+              if (widget.skipOverlay case final overlay?)
+                PositionedDirectional(
+                  end: 12,
+                  bottom: 48,
+                  child: overlay(_controlsVisible),
+                ),
               Positioned(left: 0, right: 0, bottom: 0, child: _seekRow()),
             ],
           ),
@@ -888,46 +1174,92 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   final maxMs = total.inMilliseconds > 0
                       ? total.inMilliseconds.toDouble()
                       : 1.0;
-                  final value = pos.inMilliseconds.toDouble().clamp(0.0, maxMs);
+                  final value = (_dragMs ?? pos.inMilliseconds.toDouble())
+                      .clamp(0.0, maxMs);
+                  final shown = Duration(milliseconds: value.round());
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
-                          height: 24,
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppColors.accent,
-                              inactiveTrackColor: Colors.white.withValues(
-                                alpha: 0.35,
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            SizedBox(
+                              height: 24,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: AppColors.accent,
+                                  inactiveTrackColor: Colors.white.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                  thumbColor: AppColors.accent,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 5,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 10,
+                                  ),
+                                  trackHeight: 3,
+                                  trackShape:
+                                      const RectangularSliderTrackShape(),
+                                ),
+                                child: Slider(
+                                  padding: EdgeInsets.zero,
+                                  value: value,
+                                  max: maxMs,
+                                  onChangeStart: (v) {
+                                    _startPreview();
+                                    setState(() => _dragMs = v);
+                                    _preview?.request(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                  },
+                                  onChanged: (v) {
+                                    setState(() => _dragMs = v);
+                                    _preview?.request(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                  },
+                                  onChangeEnd: (v) {
+                                    widget.onSeek(
+                                      Duration(milliseconds: v.round()),
+                                    );
+                                    setState(() => _dragMs = null);
+                                  },
+                                ),
                               ),
-                              thumbColor: AppColors.accent,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 5,
-                              ),
-                              overlayShape: const RoundSliderOverlayShape(
-                                overlayRadius: 10,
-                              ),
-                              trackHeight: 3,
-                              trackShape: const RectangularSliderTrackShape(),
                             ),
-                            child: Slider(
-                              padding: EdgeInsets.zero,
-                              value: value,
-                              max: maxMs,
-                              onChanged: (v) => widget.onSeek(
-                                Duration(milliseconds: v.round()),
+                            if (_dragMs != null)
+                              Positioned(
+                                left:
+                                    ((value / maxMs) *
+                                                (MediaQuery.sizeOf(
+                                                      context,
+                                                    ).width -
+                                                    32) -
+                                            84)
+                                        .clamp(
+                                          0.0,
+                                          MediaQuery.sizeOf(context).width -
+                                              32 -
+                                              168,
+                                        ),
+                                bottom: 30,
+                                width: 168,
+                                child: _ScrubBubble(
+                                  preview: _preview,
+                                  time: formatWatchTime(shown),
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
                         ),
                         SizedBox(
                           height: 32,
                           child: Row(
                             children: [
                               Text(
-                                '${formatWatchTime(pos)} / ${formatWatchTime(total)}',
+                                '${formatWatchTime(shown)} / ${formatWatchTime(total)}',
                                 style: AppText.caption.copyWith(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -967,6 +1299,8 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
 
   // ── Info ─────────────────────────────────────────────────────────────────
 
+  bool get _titleShown => _frameUp || widget.loadingOverlay == null;
+
   Widget _info() {
     final l10n = context.l10n;
     // CustomScrollView + SliverList: a 1000-episode title only builds the
@@ -987,31 +1321,41 @@ class _PlayerWatchPageState extends State<PlayerWatchPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: WatchPageChange(
-                          value: widget.header.title,
-                          child: Text(
-                            widget.header.title,
-                            style: AppText.headline.copyWith(
-                              color: Colors.white,
-                              fontSize: 20,
+                      AnimatedOpacity(
+                        // Episode name stays hidden behind the startup loader
+                        // (space is kept so nothing jumps when it appears).
+                        opacity: _titleShown ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: WatchPageChange(
+                            value: widget.header.title,
+                            child: Text(
+                              widget.header.title,
+                              style: AppText.headline.copyWith(
+                                color: Colors.white,
+                                fontSize: 20,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
                       if (widget.header.subtitle.isNotEmpty) ...[
                         const SizedBox(height: 4),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: WatchPageChange(
-                            value: widget.header.subtitle,
-                            child: Text(
-                              widget.header.subtitle,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textSecondary,
+                        AnimatedOpacity(
+                          opacity: _titleShown ? 1 : 0,
+                          duration: const Duration(milliseconds: 250),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: WatchPageChange(
+                              value: widget.header.subtitle,
+                              child: Text(
+                                widget.header.subtitle,
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             ),
                           ),
@@ -1879,6 +2223,61 @@ class WatchPlayerButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Thumbnail + time shown above the thumb while scrubbing in portrait.
+class _ScrubBubble extends StatelessWidget {
+  const _ScrubBubble({required this.preview, required this.time});
+  final SeekPreview? preview;
+  final String time;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = preview;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (p != null)
+          ValueListenableBuilder<Uint8List?>(
+            valueListenable: p.frame,
+            builder: (context, bytes, _) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 168,
+                  height: 94,
+                  color: Colors.black,
+                  child: bytes == null
+                      ? const SizedBox.shrink()
+                      : Image.memory(
+                          bytes,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        ),
+                ),
+              ),
+            ),
+          ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Text(
+              time,
+              style: AppText.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
