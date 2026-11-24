@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:io';
@@ -656,9 +657,24 @@ class CloudStreamProvider implements BaseProvider {
     // thread). Handing Flutter a nested List<Map> would make the platform
     // channel encode it on the UI thread — which skips frames on big feeds like
     // MovieBox. Decode it OFF the UI thread (compute) when it's large.
-    final jsonStr = await _csChannel.invokeMethod<String>('getHome', {
+    // AniVortex can leave its native home feed waiting indefinitely when a
+    // remote category stalls. Bound only this plugin's Flutter-side wait so
+    // Home can show a retry state and the user can still switch away.
+    // Other installed CloudStream plugins keep their existing behavior.
+    final request = _csChannel.invokeMethod<String>('getHome', {
       'name': hostKey,
     });
+    final isAniVortex = sourceId.toLowerCase().contains('anivortex') ||
+        name.toLowerCase().contains('anivortex');
+    final jsonStr = isAniVortex
+        ? await request.timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              debugPrint('[cloudstream] AniVortex home timed out; allowing retry');
+              return null;
+            },
+          )
+        : await request;
     if (jsonStr == null || jsonStr.isEmpty || jsonStr == '[]') return null;
     final List<dynamic> raw = jsonStr.length > 20000
         ? await compute(_decodeJsonList, jsonStr)
