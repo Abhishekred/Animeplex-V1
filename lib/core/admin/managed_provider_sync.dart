@@ -79,6 +79,7 @@ class ManagedProviderSync {
     final data = await supabase.client
         .from('animeplex_managed_providers')
         .select('id,repo_url,plugin_id,enabled,auto_install,is_default,priority')
+        .eq('kind', 'cloudstream')
         .eq('enabled', true)
         .order('priority', ascending: true)
         .limit(40);
