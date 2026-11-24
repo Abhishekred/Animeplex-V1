@@ -31,6 +31,10 @@ class _UserAccountGateState extends State<UserAccountGate>
   bool _busy=false;
   bool _forcedUnavailable=false;
   String? _currentUid;
+  // Prevent stale, repeatedly-polled server state from undoing a user's
+  // manual selection and resetting Home's scroll position every 30 seconds.
+  String? _lastSeenUnlockedRemoteProvider;
+  bool _hasSeenUnlockedRemoteProvider = false;
 
   @override
   void initState(){
@@ -44,6 +48,8 @@ class _UserAccountGateState extends State<UserAccountGate>
       if(id!=_currentUid){
         _currentUid=id;
         _forcedUnavailable=false;
+        _hasSeenUnlockedRemoteProvider=false;
+        _lastSeenUnlockedRemoteProvider=null;
         if(id==null) UserRuntimeControls.resetOnLogout();
         else UserRuntimeControls.adoptUser(id);
       }
@@ -93,11 +99,20 @@ class _UserAccountGateState extends State<UserAccountGate>
       final available=sources.map((x)=>x.id).toSet();
       final target=row.providerLocked
           ? row.forcedProviderId : row.currentProviderId;
+      // An unlocked user's server value is a last-reported selection, not a
+      // perpetual forced setting. Apply it only when it changes on the server
+      // (e.g. the admin chose a new provider), rather than on every poll.
+      // A lock is different: it must be enforced whenever the app syncs.
+      final remoteChanged = !_hasSeenUnlockedRemoteProvider ||
+          _lastSeenUnlockedRemoteProvider != row.currentProviderId;
+      _lastSeenUnlockedRemoteProvider=row.currentProviderId;
+      _hasSeenUnlockedRemoteProvider=true;
+      final shouldApplyTarget = row.providerLocked || remoteChanged;
       if(row.providerLocked && target!=null && !available.contains(target)){
         if(!_forcedUnavailable)setState(()=>_forcedUnavailable=true);
       }else{
         if(_forcedUnavailable)setState(()=>_forcedUnavailable=false);
-        if(target!=null && available.contains(target)){
+        if(shouldApplyTarget && target!=null && available.contains(target)){
           final active=sl<ActiveSourceCubit>();
           if(active.state!=target)active.setSourceFromAdmin(target);
           final provider=sourceTypeOf(target);
