@@ -43,6 +43,7 @@ import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
+import '../../core/admin/user_runtime_controls.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_item_url.dart';
 import '../../core/theme/app_colors.dart';
@@ -362,7 +363,16 @@ class _HomeViewState extends State<_HomeView>
   }
 
   void _selectHomeCatalogueSource(String sourceId) {
+    if (!UserRuntimeControls.maySelect(sourceId)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content:Text('Provider is locked by the administrator'),
+      ));
+      return;
+    }
     if (sourceId == _sourceCatalogueSourceId) return;
+    // The Home catalogue and the playback source have distinct preferences.
+    // Keep BOTH aligned when the user selects an installed extension.
+    sl<ActiveSourceCubit>().setSource(sourceId);
     setState(() {
       _sourceCatalogueSourceId = sourceId;
       _sourceCatalogueSections = const [];
