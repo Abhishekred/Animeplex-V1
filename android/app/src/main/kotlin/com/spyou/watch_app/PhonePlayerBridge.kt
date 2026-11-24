@@ -1,12 +1,29 @@
 package com.spyou.watch_app
 
 import android.app.Activity
+import android.app.Dialog
+import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.ColorDrawable
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.PlayerView
+import io.flutter.embedding.android.FlutterTextureView
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMessageCodec
+import io.flutter.plugin.platform.PlatformView
+import io.flutter.plugin.platform.PlatformViewFactory
 
 /**
  * Owns the `zangetsu/phone_player` channel and starts [PhonePlayerActivity].
@@ -27,6 +44,9 @@ object PhonePlayerBridge {
 
     // Display rows stay in-process: long libraries must not fill an Intent parcel.
     private var watchData: Pair<Long, Map<String, Any?>>? = null
+    private var flutterHost: Pair<Activity, FlutterEngine>? = null
+
+    internal fun dockHost(): MainActivity? = flutterHost?.first as? MainActivity
 
     internal fun watchDataFor(session: Long): Map<String, Any?> =
         watchData?.takeIf { it.first == session }?.second.orEmpty()
@@ -36,10 +56,38 @@ object PhonePlayerBridge {
     }
 
     fun register(engine: FlutterEngine, activity: Activity) {
+        flutterHost = activity to engine
+        engine.platformViewsController.registry.registerViewFactory(
+            "zangetsu/phone_player_dock",
+            object : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+                override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+                    val session = (args as? Number)?.toLong()
+                    val view = LayoutInflater.from(context)
+                        .inflate(R.layout.phone_player_dock, null) as PlayerView
+                    val owner = PhonePlayerActivity.active?.takeIf { it.sessionId == session }
+                    owner?.attachDockView(view)
+                    return object : PlatformView {
+                        override fun getView(): View = view
+                        override fun dispose() { owner?.detachDockView(view) }
+                    }
+                }
+            },
+        )
         val ch = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "launch" -> launch(activity, call, result)
+                "dockShown" -> {
+                    // The app's mini player is on screen: the native card can leave.
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    PhonePlayerActivity.active?.takeIf { it.sessionId == session }?.completeDockHandoff()
+                    result.success(true)
+                }
+                "toggleDockPlayback", "closeDock", "restoreDock" -> {
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val owner = PhonePlayerActivity.active?.takeIf { it.sessionId == session }
+                    result.success(owner?.dockCommand(call.method) == true)
+                }
                 "cacheInfo", "clearPlaybackCache" -> Thread({
                     try {
                         val prepared = runCatching {
@@ -72,6 +120,26 @@ object PhonePlayerBridge {
                         result.success(false)
                     }
                 }
+                "updateSubtitleStyle" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val scale = call.argument<Number>("scale")?.toFloat()
+                    val position = call.argument<Number>("position")?.toInt()
+                    val foreground = call.argument<Number>("foreground")?.toInt()
+                    val background = call.argument<Number>("background")?.toInt()
+                    val edgeType = call.argument<Number>("edgeType")?.toInt()
+                    val edgeColor = call.argument<Number>("edgeColor")?.toInt()
+                    if (target != null && target.sessionId == session && scale?.isFinite() == true &&
+                        position != null && foreground != null && background != null &&
+                        edgeType != null && edgeColor != null
+                    ) {
+                        target.updateSubtitleStyle(scale, position, foreground, background,
+                            edgeType, edgeColor, call.argument<String>("fontPath"))
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -80,8 +148,77 @@ object PhonePlayerBridge {
 
     fun dispose() {
         watchData = null
+        PhonePlayerActivity.active?.takeIf { it.docked }?.finish()
+        flutterHost = null
         channel?.setMethodCallHandler(null)
         channel = null
+    }
+
+    internal fun openSubtitleStyle(player: PhonePlayerActivity): Dialog? {
+        if (player.isFinishing || player.isDestroyed) return null
+        val (host, engine) = flutterHost ?: return null
+        val bridge = channel ?: return null
+        val original = host.findViewById<ViewGroup>(R.id.flutter_container)
+            ?.getChildAt(0) as? FlutterView ?: return null
+        if (original.attachedFlutterEngine !== engine || host.isDestroyed) return null
+        val texture = FlutterTextureView(player).apply { isOpaque = false }
+        val overlay = FlutterView(player, texture)
+        val args = mapOf("sessionId" to player.sessionId)
+        var closedByFlutter = false
+        val dialog = object : Dialog(player, android.R.style.Theme_DeviceDefault_NoActionBar) {
+            @Deprecated("Flutter handles back navigation in the overlay")
+            override fun onBackPressed() {
+                engine.navigationChannel.popRoute()
+            }
+        }
+        dialog.setContentView(overlay)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setFormat(PixelFormat.TRANSLUCENT)
+            clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            WindowCompat.setDecorFitsSystemWindows(this, false)
+            decorView.systemUiVisibility = player.window.decorView.systemUiVisibility
+        }
+        fun restoreHost() {
+            overlay.detachFromFlutterEngine()
+            if (!host.isDestroyed) {
+                original.attachToFlutterEngine(engine)
+                if ((host as? LifecycleOwner)?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
+                    engine.lifecycleChannel.appIsResumed()
+                } else {
+                    engine.lifecycleChannel.appIsPaused()
+                }
+            }
+        }
+        dialog.setOnDismissListener {
+            restoreHost()
+            if (!closedByFlutter) bridge.invokeMethod("closeSubtitleStyle", args)
+        }
+        original.detachFromFlutterEngine()
+        overlay.attachToFlutterEngine(engine)
+        try {
+            dialog.show()
+        } catch (_: android.view.WindowManager.BadTokenException) {
+            restoreHost()
+            return null
+        }
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        bridge.invokeMethod("openSubtitleStyle", args, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                closedByFlutter = true
+                dialog.dismiss()
+            }
+            override fun error(code: String, message: String?, details: Any?) = success(null)
+            override fun notImplemented() = success(null)
+        })
+        engine.lifecycleChannel.appIsResumed()
+        engine.lifecycleChannel.aWindowIsFocused()
+        return dialog
+    }
+
+    internal fun setSubtitleOverlayResumed(resumed: Boolean) {
+        val lifecycle = flutterHost?.second?.lifecycleChannel ?: return
+        if (resumed) lifecycle.appIsResumed() else lifecycle.appIsPaused()
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -97,6 +234,8 @@ object PhonePlayerBridge {
                 call.argument<Boolean>("autoPlayerFallback") ?: false)
             i.putExtra(PhonePlayerIntent.EXTRA_ADMIN_CONTROLS_LOCKED,
                 call.argument<Boolean>("adminControlsLocked") ?: false)
+            i.putExtra(PhonePlayerIntent.EXTRA_AMBIENT_ENABLED,
+                call.argument<Boolean>("ambientPlayer") ?: true)
             call.argument<Map<String, Any?>>("controlLayout")?.let {
                 i.putExtra(PhonePlayerIntent.EXTRA_CONTROLS, org.json.JSONObject(it).toString())
             }
@@ -159,9 +298,18 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_SPEED,
                 (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat(),
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_HOLD_SPEED, call.argument<Boolean>("holdSpeed") ?: true)
             i.putExtra(
                 PhonePlayerIntent.EXTRA_AUTO_RESUME,
                 call.argument<Boolean>("autoResume") ?: true,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_AUTO_PIP,
+                call.argument<Boolean>("autoPip") ?: false,
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_IN_APP_MINI_PLAYER,
+                call.argument<Boolean>("inAppMiniPlayer") ?: true,
             )
             i.putExtra(
                 PhonePlayerIntent.EXTRA_KEEP_SCREEN_ON,
@@ -218,14 +366,26 @@ object PhonePlayerBridge {
                 PhonePlayerIntent.EXTRA_SUB_PREFERENCE,
                 call.argument<String>("subtitlePreference") ?: "",
             )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SUB_POSITION,
+                (call.argument<Number>("subtitlePosition") ?: 95).toInt(),
+            )
             call.argument<String>("subtitleFontPath")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SUB_FONT, it) }
+            for (key in listOf("loadingArtwork", "loadingLogo")) {
+                call.argument<String>(key)?.let { i.putExtra(key, it) }
+            }
+            val artworkHeaders = call.argument<Map<String, String>>("loadingArtworkHeaders")
+            i.putExtra("loadingArtworkHeaders", artworkHeaders.orEmpty()
+                .flatMap { (key, value) -> listOf(key, value) }.toTypedArray())
             call.argument<String>("cover")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_COVER, it) }
             i.putExtra(
                 PhonePlayerIntent.EXTRA_ORIENTATION,
                 call.argument<String>("playerOrientation") ?: "landscape",
             )
+            i.putExtra(PhonePlayerIntent.EXTRA_PORTRAIT_VIDEO_EDGE_TO_EDGE,
+                call.argument<Boolean>("portraitVideoEdgeToEdge") ?: false)
             call.argument<String>("showDescription")
                 ?.let { i.putExtra(PhonePlayerIntent.EXTRA_SHOW_DESC, it) }
             call.argument<List<String>>("availableCategories")

@@ -1,6 +1,7 @@
 package com.spyou.watch_app
 
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -313,8 +314,11 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         flutterFragment.onTrimMemory(level)
     }
 
+    private var openingExplicitDestination = false
+
     override fun onResume() {
         super.onResume()
+        pip.onResumed()
         playerOrientationObserver?.enable()
         current = java.lang.ref.WeakReference(this)
         // CloudStream plugins that store their own settings grab a per-plugin
@@ -324,6 +328,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // returns a real Activity instead of null; otherwise those prefs are never
         // read back and the selection reverts on restart.
         com.lagradost.cloudstream3.CommonActivity.setActivityInstance(this)
+        if (!openingExplicitDestination) PhonePlayerActivity.active?.reopenPausedPip()
+        openingExplicitDestination = false
     }
 
     override fun onPause() {
@@ -334,6 +340,15 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // isn't in front. Dart re-enables it when the reader resumes.
         volumeKeyPaging = false
         super.onPause()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (pip.consumeDismissal()) {
+            pip.onControl?.invoke(PipController.DISMISSED)
+        } else if (!isInPictureInPictureMode) {
+            PhonePlayerActivity.active?.pauseDock()
+        }
     }
 
     // ── Volume-key paging (manga reader) ──────────────────────────────────
@@ -371,6 +386,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // A "new episode" notification tapped while the app is already running:
     // forward its payload to Dart so it opens that show's Detail.
     override fun onNewIntent(intent: Intent) {
+        openingExplicitDestination =
+            intent.action == Intent.ACTION_VIEW || intent.hasExtra("notif_payload")
         super.onNewIntent(intent)
         flutterFragment.onNewIntent(intent)
         setIntent(intent)
@@ -404,6 +421,23 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     // Window actions, aspect ratio and enter animation — see PipController.
     private val pip by lazy { PipController(this) }
+
+    private var phoneDockAutoPip = false
+    private var phoneDockActive = false
+
+    internal fun updatePhoneDockPip(auto: Boolean, playing: Boolean, width: Int, height: Int) {
+        if (!phoneDockActive) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        phoneDockActive = true
+        phoneDockAutoPip = auto
+        pip.setState(playing, width, height)
+        pip.autoEnter = auto
+    }
+
+    internal fun clearPhoneDockPip(restoring: Boolean = false) {
+        phoneDockActive = false
+        phoneDockAutoPip = false
+        pip.autoEnter = !restoring && autoPipEnabled
+    }
 
     // Set in configureFlutterEngine; used by onNewIntent to hand a tapped
     // "new episode" notification to Dart while the app is already running.
@@ -518,6 +552,43 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             releaseRetriever()
                             runOnUiThread { result.success(null) }
                         }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Online scrub previews — keyframe_thumbs (standalone range-request +
+        // single-keyframe decode, no mpv involved). Same executor as the local
+        // (MMR) "frame" channel above: the two never run for the same preview
+        // session, so sharing the thread is free.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/keyframe_thumbs")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "frame" -> {
+                        val url = call.argument<String>("url")
+                        val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                        val headers = call.argument<Map<String, String>>("headers")
+                        if (url == null) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val flatHeaders = headers?.flatMap { (k, v) -> listOf(k, v) }
+                            ?.toTypedArray() ?: arrayOf()
+                        executor.execute {
+                            val bytes = try {
+                                keyframethumbs.Native.requestThumbnail(url, positionMs, flatHeaders)
+                            } catch (e: Throwable) {
+                                android.util.Log.e("KeyframeThumbs", "requestThumbnail failed", e)
+                                null
+                            }
+                            runOnUiThread {
+                                result.success(if (bytes == null || bytes.isEmpty()) null else bytes)
+                            }
+                        }
+                    }
+                    "release" -> executor.execute {
+                        runCatching { keyframethumbs.Native.releaseThumbnailSession() }
+                        runOnUiThread { result.success(null) }
                     }
                     else -> result.notImplemented()
                 }
@@ -733,14 +804,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
         // Same channel both ways now: Dart arms auto-PiP and pushes playback
         // state down it, and a tapped window button comes back up it.
-        pip.channel = pipChannel
+        pip.onControl = { control ->
+            val dock = PhonePlayerActivity.active?.takeIf { it.docked }
+            if (dock == null) pipChannel.invokeMethod(control, null)
+            else dock.onDockPipControl(control)
+        }
         pip.register()
         pipChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "setAutoPip" -> {
                     autoPipEnabled = (call.arguments as? Boolean) ?: false
                     // Android 12+ only; below that onUserLeaveHint covers it.
-                    pip.autoEnter = autoPipEnabled
+                    pip.autoEnter = if (phoneDockActive) phoneDockAutoPip else autoPipEnabled
                     result.success(true)
                 }
                 // Playback state + video size, so the window can show the right
@@ -1506,7 +1581,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         flutterFragment.onUserLeaveHint()
-        if (autoPipEnabled &&
+        val autoEnter = if (phoneDockActive) phoneDockAutoPip else autoPipEnabled
+        if (autoEnter &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
             !isInPictureInPictureMode
@@ -1522,7 +1598,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         newConfig: android.content.res.Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) pip.applyParams()
+        if (isInPictureInPictureMode) {
+            pip.onEntered()
+            pip.applyParams()
+        } else if (phoneDockActive) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
     }
 
     // Known external video players (package -> display label).
@@ -1739,9 +1820,22 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     private fun launchTvPlayer(call: MethodCall, result: MethodChannel.Result) {
         try {
             val url = call.argument<String>("url")
-            if (url.isNullOrEmpty()) { result.success(mapOf("launched" to false)); return }
+            val resolveOnOpen = call.argument<Boolean>("resolveOnOpen") == true
+            if (url.isNullOrEmpty() && !resolveOnOpen) {
+                result.success(mapOf("launched" to false))
+                return
+            }
             val intent = Intent(this, TvPlayerActivity::class.java)
+            intent.putExtra(TvPlayerActivity.EXTRA_RESOLVE_ON_OPEN, resolveOnOpen)
             intent.putExtra(TvPlayerActivity.EXTRA_URL, url)
+            for (key in listOf("loadingArtwork", "loadingLogo")) {
+                call.argument<String>(key)?.let { intent.putExtra(key, it) }
+            }
+            val artworkHeaders = call.argument<Map<String, String>>("loadingArtworkHeaders")
+            intent.putExtra(
+                "loadingArtworkHeaders",
+                artworkHeaders.orEmpty().flatMap { (key, value) -> listOf(key, value) }.toTypedArray(),
+            )
             call.argument<String>("title")?.let { intent.putExtra(TvPlayerActivity.EXTRA_TITLE, it) }
             call.argument<String>("episodeLabel")?.let { intent.putExtra(TvPlayerActivity.EXTRA_EP_LABEL, it) }
             call.argument<String>("mimeType")?.let { intent.putExtra(TvPlayerActivity.EXTRA_MIME, it) }
@@ -1927,6 +2021,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             "durationMs" to (if (dur > 0) dur else 0L),
                             "episodeIndex" to epIndex,
                             "playbackError" to playbackError,
+                            "sourceLookupFailed" to
+                                (data?.getBooleanExtra(TvPlayerActivity.RESULT_SOURCE_LOOKUP_FAILED, false) == true),
                         ),
                     )
                 } catch (_: Exception) {}

@@ -42,6 +42,9 @@ const String kLogIntakeUrl = 'https://animeplex-logs.ttest.workers.dev';
 const String kProfilePickerArtworkManifestUrl =
     'https://pub-31b012ff212e4f15934133826c1d9570.r2.dev/profile-picker/manifest.json';
 
+const String kProfileZoomLinesUrl =
+    'https://pub-31b012ff212e4f15934133826c1d9570.r2.dev/profile-picker/anime-zoom-lines-sheet.png?v=1';
+
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.
 /// Edit + push that file to broadcast a message to every user.
