@@ -54,6 +54,12 @@ class UserRuntimeControls {
   static bool get manualSwitchLocked =>
       state.value.providerLocked && state.value.userId != null;
 
+  /// Adopt the cached restrictions as soon as the authenticated profile loads.
+  static void adoptUser(String uid) {
+    if (state.value.userId != uid) state.value = _fromCache(uid);
+  }
+
+
   static void resetOnLogout() {
     state.value = const UserRuntimeSnapshot();
   }
