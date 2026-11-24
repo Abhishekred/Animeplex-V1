@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show debugPrint;
+import '../admin/user_runtime_controls.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
@@ -49,9 +52,24 @@ class ActiveSourceCubit extends Cubit<String> {
   }
 
   void setSource(String id) {
+    if (!UserRuntimeControls.maySelect(id)) {
+      debugPrint('[active-source] Manual source change blocked by admin lock');
+      return;
+    }
     if (id == state) return;
+    _applySource(id);
+    unawaited(UserRuntimeControls.reportManualSelection(id));
+  }
+
+  /// Trusted app-side application of a server-selected provider. This does
+  /// not call the manual-switch RPC or allow the user to bypass a lock.
+  void setSourceFromAdmin(String id) {
+    if (id == state) return;
+    _applySource(id);
+  }
+
+  void _applySource(String id) {
     emit(id);
-    // Fire-and-forget; Hive serializes writes so ordering is preserved.
     _box?.put(_key, id);
   }
 
