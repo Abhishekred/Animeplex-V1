@@ -57,6 +57,7 @@ import '../playback/watch_history.dart';
 import '../provider/cf_clearance_store.dart';
 import '../provider/cloudstream_provider.dart';
 import '../admin/managed_provider_sync.dart';
+import '../admin/remote_selected_provider_sync.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
 import '../share/open_link_service.dart';
@@ -1307,6 +1308,22 @@ Future<void> initDependencies({bool Function()? isOffline}) async {
         );
       } catch (e) {
         debugPrint('[managed-providers] Offline or unavailable: $e');
+      }
+      // Other ecosystems have their own installation APIs; apply only the
+      // extensions explicitly checked in the admin panel.
+      try {
+        await RemoteSelectedProviderSync.apply(
+          supabase: sl<SupabaseService>(),
+          zangetsuRepos: repos,
+          zangetsuRegistry: registry,
+          aniyomi: aniyomiManager,
+          mihon: mihonManager,
+          lnreader: lnrService,
+          mangayomi: mangayomiManager,
+          stremio: stremioManager,
+        );
+      } catch (e) {
+        debugPrint('[admin-provider-sync] Offline or unavailable: $e');
       }
       // Honor a saved `cs:` active source that wasn't loaded yet at boot
       // (ActiveSourceCubit fell back to a JS source). reapplySaved only swaps
