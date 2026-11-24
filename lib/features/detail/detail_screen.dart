@@ -21,6 +21,7 @@ import '../../core/ui/poster_card.dart';
 import '../../core/ui/detail_prefs.dart';
 import '../../core/ui/poster_palette.dart';
 import '../../core/ui/mobile_hero_art.dart';
+import '../../core/ui/tmdb_hero_banner.dart';
 import '../../core/metadata/synopsis.dart';
 import '../../core/models/film.dart';
 import '../../core/mode/content_mode_cubit.dart';
@@ -148,6 +149,13 @@ part 'detail_tabs.dart';
 part 'detail_skeleton.dart';
 
 part 'detail_screen_tv.dart';
+
+Future<void> _changeEpisodeVersion(BuildContext context, String category) async {
+  final switched = await context.read<DetailCubit>().setCategory(category);
+  if (!switched && context.mounted) {
+    showAppToast(context, context.l10n.somethingWentWrong);
+  }
+}
 
 /// Last-resort friendly name for a [sourceId] that's neither a loaded JS nor CS
 /// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
@@ -551,6 +559,11 @@ class _DetailViewState extends State<_DetailView>
   /// memory + Hive, so repeat opens don't pop.
   String? _logoUrl;
 
+  /// TMDB backdrop for an AniList anime (keyed by item id), once resolved —
+  /// AniList's own `bannerImage` is often missing or low-res. No entry keeps
+  /// today's banner.
+  final Map<String, String> _tmdbBanners = {};
+
   /// Resolve once; only the hero listens for the result.
   void _resolveTrailer(MediaDetail detail) {
     _trailerFuture ??= sl<TrailerService>().youtubeId(
@@ -567,6 +580,7 @@ class _DetailViewState extends State<_DetailView>
     _tint.addListener(_onTintChanged);
     ThemeController.revision.addListener(_onThemeRevision);
     _loadLogo();
+    _loadTmdbBanner();
     _schedulePlayerWarmup();
     // Discord Rich Presence: "Looking at <title>" while this detail is open.
     if (sl.isRegistered<DiscordRpc>()) {
@@ -678,6 +692,22 @@ class _DetailViewState extends State<_DetailView>
         setState(() => _logoUrl = url);
       }
     } catch (_) {}
+  }
+
+  /// Best-effort TMDB backdrop lookup for an AniList anime. No-op for every
+  /// other provider — their own banner is already good.
+  void _loadTmdbBanner() {
+    final item = widget.item;
+    loadTmdbBanners(
+      [item],
+      _tmdbBanners,
+      context: context,
+      mounted: () =>
+          mounted &&
+          widget.item.id == item.id &&
+          widget.item.sourceId == item.sourceId,
+      onResolved: (id, url) => setState(() => _tmdbBanners[id] = url),
+    );
   }
 
   @override
@@ -1584,22 +1614,19 @@ class _DetailViewState extends State<_DetailView>
       _listStatus.setStatus(widget.item, WatchStatus.watching);
     }
 
-    // Available sub/dub categories from the detail — lets the PLAYER offer the
-    // Sub/Dub switch (the Detail no longer does). Empty/single → treated as a
-    // single-category source by the player (no Version section).
+    // The player uses these counts to offer its own version switch.
     final available = <String>[
       if ((detail.subCount ?? 0) > 0) 'sub',
       if ((detail.dubCount ?? 0) > 0) 'dub',
     ];
     final availableCategories = available.isEmpty ? [category] : available;
 
-    // Fresh play: prefer a saved per-title sub/dub choice, else the global
-    // default category, else fall back to the incoming category. Constrain to
-    // what's actually offered so single-category titles are a harmless no-op.
+    // Titles with a picker launch the version shown in the episode list.
     final preferred =
         sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    final launchCategory = availableCategories.contains(preferred)
+    final launchCategory =
+        !showSubDubFor(detail) && availableCategories.contains(preferred)
         ? preferred
         : category;
 
@@ -1659,6 +1686,8 @@ class _DetailViewState extends State<_DetailView>
               showTitle: detail.title,
               showDescription: detail.description,
               cover: detail.cover ?? widget.item.cover,
+              loadingLogo: _logoUrl ?? widget.item.titleLogo,
+              loadingBackdrop: detail.banner ?? widget.item.banner,
               coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
               showUrl: widget.item.url,
               downloadShowId: widget.item.id,
@@ -2175,7 +2204,14 @@ class _DetailViewState extends State<_DetailView>
 
   @override
   Widget build(BuildContext context) {
-    if (sl<AppMode>().isTv) return DetailScreenTv(item: widget.item);
+    if (sl<AppMode>().isTv) {
+      return DetailScreenTv(
+        item: widget.item,
+        onPrefetchEpisode: Platform.isAndroid
+            ? (episodeUrl) => _maybePrefetch(episodeUrl, widget.item.sourceId)
+            : null,
+      );
+    }
     if (!_hasEntered) {
       return _DetailOpeningPreview(
         item: widget.item,
@@ -2383,11 +2419,17 @@ class _DetailViewState extends State<_DetailView>
                     : context.l10n.continueEpisode(episodeNum))
               : context.l10n.play);
 
+    // AniList anime: the TMDB backdrop we've resolved, if any, over AniList's
+    // own (often missing/low-res) banner. Every other provider is unchanged.
+    final banner = detail.type == ProviderType.anime
+        ? (_tmdbBanners[widget.item.id] ?? detail.banner ?? item.banner)
+        : (detail.banner ?? item.banner);
+
     // Tall phone hero: prefer TMDB's portrait art; other sources stay as-is.
     final coverUrl =
         mobileHeroArt(
           detail.cover ?? item.cover,
-          detail.banner ?? item.banner ?? item.landscapePoster,
+          banner ?? item.landscapePoster,
           sourceId: detail.sourceId,
         ) ??
         '';
@@ -2395,7 +2437,7 @@ class _DetailViewState extends State<_DetailView>
     final hasCover = coverUrl.isNotEmpty;
 
     final tintPoster = (detail.cover ?? item.cover)?.trim();
-    final tintBackdrop = (detail.banner ?? item.banner)?.trim();
+    final tintBackdrop = banner?.trim();
     final tintArt = adaptiveArtUrl(tintPoster, tintBackdrop);
     if (ThemeController.adaptiveColour &&
         tintArt != null &&
@@ -2956,6 +2998,37 @@ class _DetailViewState extends State<_DetailView>
           // ── Episodes ──────────────────────────────────────────────────────
           _EpisodesTab(
             loading: state.episodesLoading,
+            versionPicker: showSubDubFor(detail)
+                ? SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    style: SegmentedButton.styleFrom(
+                      backgroundColor: AppColors.surface2,
+                      foregroundColor: AppColors.textSecondary,
+                      selectedBackgroundColor: AppColors.accentSoft,
+                      selectedForegroundColor: AppColors.textPrimary,
+                      side: const BorderSide(color: AppColors.hairline),
+                      textStyle: AppText.caption.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      minimumSize: const Size(36, 28),
+                    ),
+                    segments: [
+                      ButtonSegment(
+                        value: 'sub',
+                        label: Text(context.l10n.sub),
+                      ),
+                      ButtonSegment(
+                        value: 'dub',
+                        label: Text(context.l10n.dub),
+                      ),
+                    ],
+                    selected: {category},
+                    onSelectionChanged: (selection) =>
+                        _changeEpisodeVersion(context, selection.single),
+                  )
+                : null,
             eps: eps,
             seasonEps: seasonEps,
             fillerEps: _fillerEps,

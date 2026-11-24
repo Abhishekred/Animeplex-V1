@@ -21,6 +21,7 @@ import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/series_groups.dart';
 import '../../core/stremio/stremio_library_badge.dart';
 import '../../core/stremio/stremio_ref.dart';
 import '../../core/playback/list_status_store.dart';
@@ -37,6 +38,7 @@ import '../../core/ui/placement_slide.dart';
 import 'animated_library_grid.dart';
 import '../../core/ui/disintegrating_poster.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/series_stacked_cover.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/ui/states.dart';
 import '../../core/ui/tracker_entry_sheet.dart';
@@ -45,11 +47,17 @@ import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
+import 'series_screen.dart';
 import 'cubit/tracker_list_cubit.dart';
 import 'library_filter.dart';
 import 'library_tabs.dart';
 import 'my_list_screen_tv.dart';
 import 'search_screen.dart';
+
+/// How much smaller a grouped-series card renders than a normal poster, so
+/// the fanned side peeks have margin to show inside the cell instead of
+/// overflowing it and getting clipped by the grid.
+const double _stackedCoverScale = 0.85;
 
 /// My List — one library the user browses by source (their own saved list plus
 /// each connected tracker) via a segmented control, and by status via tabs.
@@ -87,7 +95,11 @@ class MyListScreen extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (_) => MyListCubit(sl<MyListStore>(), sl<ListStatusStore>()),
+          create: (_) => MyListCubit(
+            sl<MyListStore>(),
+            sl<ListStatusStore>(),
+            sl<SeriesGroupStore>(),
+          ),
         ),
         BlocProvider(
           create: (_) {
@@ -1065,34 +1077,39 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   Widget _myListBody(BuildContext context) {
     return BlocBuilder<MyListCubit, List<MyListEntry>>(
       builder: (context, entries) {
-        if (entries.isEmpty) _shuffleAction = null;
-        final child = entries.isEmpty
-            ? _empty(context)
-            : _grid(
-                context,
-                entries,
-                onTap: (item) => _openItem(context, item),
-                onMore: (entry) => showListStatusSheet(
-                  context,
-                  item: entry.item,
-                  onRemove: (item, commit) => _animatedRemove(entry, commit),
+        if (entries.isEmpty) {
+          _shuffleAction = null;
+          final empty = _empty(context);
+          return RefreshIndicator(
+            color: AppColors.accent,
+            backgroundColor: AppColors.surface,
+            onRefresh: () => sl<MyListStore>().pullFromCloud(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: empty,
                 ),
-              );
+              ],
+            ),
+          );
+        }
+        final grid = _grid(
+          context,
+          entries,
+          onTap: (item) => _openItem(context, item),
+          onMore: (entry) => showListStatusSheet(
+            context,
+            item: entry.item,
+            onRemove: (item, commit) => _animatedRemove(entry, commit),
+          ),
+        );
         return RefreshIndicator(
           color: AppColors.accent,
           backgroundColor: AppColors.surface,
           onRefresh: () => sl<MyListStore>().pullFromCloud(),
-          child: entries.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.6,
-                      child: child,
-                    ),
-                  ],
-                )
-              : child,
+          child: grid,
         );
       },
     );
@@ -1322,8 +1339,11 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       onSelected: _selectTab,
       onAdd: onAdd,
       bodyFor: (view) {
+        final filtered = modeEntries
+            .where((e) => view.test(e) && _matchesQuery(e))
+            .toList();
         final shown = sortLibrary(
-          modeEntries.where((e) => view.test(e) && _matchesQuery(e)).toList(),
+          filtered,
           _sortFor(isMyList: isMyList),
           _sortDesc,
         );
@@ -1359,21 +1379,23 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
             crossAxisSpacing: 12,
             mainAxisSpacing: 16,
           ),
-          itemBuilder: (context, i, entry, slide) => RevealItem(
+          itemBuilder: (context, i, entry, slide) {
             // Keyed by entry: the whole card (image element included) travels
             // to its new slot instead of a fresh card remounting there with
             // a fade-in. findChildIndexCallback on the grid makes the match.
-            key: ValueKey('cell:${_entryKey(entry)}'),
-            index: i,
-            child: _posterCell(
-              entry,
-              slide: slide,
-              onTap: onTap,
-              onMore: onMore,
-              cellW: cellW,
-              isMyList: isMyList,
-            ),
-          ),
+            return RevealItem(
+              key: ValueKey('cell:${_entryKey(entry)}'),
+              index: i,
+              child: _posterCell(
+                entry,
+                slide: slide,
+                onTap: onTap,
+                onMore: onMore,
+                cellW: cellW,
+                isMyList: isMyList,
+              ),
+            );
+          },
         );
       },
     );
@@ -1395,6 +1417,60 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
   }) {
     final exitingKey = _entryKey(entry);
     final exiting = _exiting.contains(exitingKey);
+    // A stacked card needs margin inside the cell for the rotated side
+    // peeks to show — at full cell size the front poster leaves none, so
+    // the peeks were overflowing the cell and getting clipped by the grid.
+    // Shrinking the whole ensemble (front card AND cellWidth together, so
+    // text/badge sizing inside PosterCard stays consistent) opens that
+    // margin up.
+    final stacked = entry is SeriesCardEntry && entry.memberItems.length > 1;
+    final effectiveCellW = stacked ? cellW * _stackedCoverScale : cellW;
+    final card = PosterCard(
+      title: entry.item.title,
+      logoItem: entry.item,
+      topLeftBadge: behindLabel(entry, context.l10n.comingSoonShort),
+      topRightBadge: entry is SeriesCardEntry
+          ? null
+          : isMyList && entry.item.sourceId == stremioSourceId
+          ? const StremioLibraryBadge()
+          : entry.isPrivate
+          ? const PrivateTrackerBadge()
+          : null,
+      imageUrl: entry.item.cover,
+      wideImageUrl: entry.item.banner,
+      genres: entry.item.genres,
+      isAdult: entry.item.isAdult,
+      progressBadge: entry.progress == null
+          ? null
+          : '${entry.item.type == ProviderType.manga || entry.item.type == ProviderType.novel ? 'Ch' : 'EP'} ${entry.progress}',
+      headers: entry.item.coverHeaders,
+      cellWidth: effectiveCellW,
+      onTap: () => entry is SeriesCardEntry
+          ? Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SeriesScreen(
+                  group: entry.group,
+                  members: entry.memberItems,
+                ),
+              ),
+            )
+          : onTap(entry.item),
+      // Long-press opens the per-card edit sheet (own list →
+      // status/remove; tracker → the tracker editor).
+      onLongPress: onMore == null ? null : () => onMore(entry),
+    );
+    final visual = stacked
+        ? Center(
+            child: FractionallySizedBox(
+              widthFactor: _stackedCoverScale,
+              heightFactor: _stackedCoverScale,
+              child: SeriesStackedCover(
+                covers: entry.memberItems,
+                child: card,
+              ),
+            ),
+          )
+        : card;
     return PlacementSlide(
       from: slide.from,
       duration: slide.duration,
@@ -1402,29 +1478,7 @@ class _MyListViewState extends State<_MyListView> with WidgetsBindingObserver {
       child: DisintegratingPoster(
         disintegrating: exiting,
         onDisintegrated: () => _commitExiting(exitingKey),
-        child: PosterCard(
-          title: entry.item.title,
-          logoItem: entry.item,
-          topLeftBadge: behindLabel(entry, context.l10n.comingSoonShort),
-          topRightBadge: isMyList && entry.item.sourceId == stremioSourceId
-              ? const StremioLibraryBadge()
-              : entry.isPrivate
-              ? const PrivateTrackerBadge()
-              : null,
-          imageUrl: entry.item.cover,
-          wideImageUrl: entry.item.banner,
-          genres: entry.item.genres,
-          isAdult: entry.item.isAdult,
-          progressBadge: entry.progress == null
-              ? null
-              : '${entry.item.type == ProviderType.manga || entry.item.type == ProviderType.novel ? 'Ch' : 'EP'} ${entry.progress}',
-          headers: entry.item.coverHeaders,
-          cellWidth: cellW,
-          onTap: () => onTap(entry.item),
-          // Long-press opens the per-card edit sheet (own list →
-          // status/remove; tracker → the tracker editor).
-          onLongPress: onMore == null ? null : () => onMore(entry),
-        ),
+        child: visual,
       ),
     );
   }

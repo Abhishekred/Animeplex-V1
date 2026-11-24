@@ -4,7 +4,7 @@ import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -42,6 +42,7 @@ import 'core/ui/poster_card.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
+import 'core/playback/series_groups.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/history_merge.dart';
 import 'core/playback/resume_store.dart';
@@ -58,6 +59,8 @@ import 'core/theme/app_font_prefs.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_route_pop_guard.dart';
 import 'core/tv/tv_viewport.dart';
+import 'features/player/in_app_mini_player.dart';
+import 'features/player/native_player_freeze.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'core/theme/theme_repaint_observer.dart';
@@ -639,6 +642,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         // My List categories ride the same trigger — two small SELECTs, and
         // they have to arrive with the list they label.
         sl<CategoryStore>().pullFromCloudIfStale(maxAge: maxAge),
+        sl<SeriesGroupStore>().pullFromCloudIfStale(maxAge: maxAge),
       ]);
       await Future.wait([
         sl<MyListStore>().retryPending(),
@@ -761,6 +765,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         sl<CategoryStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
+        sl<SeriesGroupStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
       ]).timeout(const Duration(seconds: 6));
       if (!isCurrentUser() || sl<ViewerProfileStore>().activeId != profileId) {
         return;
@@ -920,7 +925,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           return PosterCardScope(
             child: AuthConnectionOverlay(
               phase: _authConnectionPhase,
-              child: isTv ? TvViewport(child: content) : content,
+              child: isTv
+                  ? TvViewport(child: content)
+                  : (Platform.isAndroid || Platform.isIOS) && shellFeatures
+                  ? InAppMiniPlayerHost(
+                      dockedPlayer: dockedPlayer,
+                      child: NativePlayerFreeze(child: content),
+                    )
+                  : content,
             ),
           );
         },
