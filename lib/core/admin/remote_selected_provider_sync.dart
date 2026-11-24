@@ -9,7 +9,7 @@ import '../provider/provider_repo_registry.dart';
 import '../provider/provider_registry.dart';
 import '../aniyomi/aniyomi_repo.dart';
 import '../aniyomi/aniyomi_extension_service.dart';
-import '../aniyomi/aniyomi_provider.dart';
+import '../provider/provider_manager.dart';
 import '../mihon/mihon_repo.dart';
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
