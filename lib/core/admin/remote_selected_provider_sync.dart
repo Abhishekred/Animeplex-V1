@@ -171,8 +171,12 @@ class RemoteSelectedProviderSync {
             final installed = mangayomi.installed.map((p) => p.source.key).toSet();
             for (final source in entries) {
               // A Mangayomi extension key includes its source numeric ID.
+              final parts = source.key.split(':');
+              final catalogId = parts.length == 5
+                  ? parts.skip(2).join(':')
+                  : source.key;
               if (!selected.contains(source.key) &&
-                  !selected.contains(source.key.split(':').last)) continue;
+                  !selected.contains(catalogId)) continue;
               if (!installed.contains(source.key)) {
                 await mangayomi.install(source);
               }
