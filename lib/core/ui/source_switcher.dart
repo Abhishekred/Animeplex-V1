@@ -16,6 +16,7 @@ import '../prefs/source_lang_prefs.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/pinned_sources.dart';
+import '../admin/user_runtime_controls.dart';
 import '../models/provider_info.dart';
 import '../playback/playback_prefs.dart';
 import '../provider/cloudstream_provider.dart';
@@ -742,6 +743,13 @@ class SourceSwitcher extends StatelessWidget {
     VoidCallback? onAutoResolve,
     bool autoSelected = false,
   }) {
+    if (UserRuntimeControls.manualSwitchLocked ||
+        UserRuntimeControls.state.value.isBanned) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content:Text('Provider switching is locked by your administrator')),
+      );
+      return;
+    }
     final mode = sl<ContentModeCubit>().state;
     final b = filterBucketsForMode(_buckets(), mode);
 
