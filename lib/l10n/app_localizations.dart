@@ -2856,7 +2856,7 @@ abstract class AppLocalizations {
   /// No description provided for @inAppMiniPlayerSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Keep watching while browsing Zangetsu. Pinch to resize.'**
+  /// **'Keep watching while browsing AnimePlex. Pinch to resize.'**
   String get inAppMiniPlayerSubtitle;
 
   /// No description provided for @autoPictureInPicture.
