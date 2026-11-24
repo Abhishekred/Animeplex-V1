@@ -6,7 +6,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/admin/user_runtime_controls.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
-import '../../core/provider/provider_manager.dart' show ProviderType;
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/source_switcher.dart';
