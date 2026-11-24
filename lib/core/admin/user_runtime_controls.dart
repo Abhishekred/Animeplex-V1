@@ -151,7 +151,7 @@ class UserRuntimeControls {
     final seen=<String>{};
     final items=<Map<String,String>>[];
     for(final item in sources){
-      if(!RegExp(r'^[A-Za-z0-9_./:-]{1,220}$').hasMatch(item.id))continue;
+      if(!RegExp(r'^[A-Za-z0-9_./:@+-]{1,220}$').hasMatch(item.id))continue;
       if(!seen.add(item.id))continue;
       if(item.name.trim().isEmpty)continue;
       items.add({'id':item.id,'name':item.name.trim().substring(
