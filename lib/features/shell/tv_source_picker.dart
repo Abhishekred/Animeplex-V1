@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/admin/user_runtime_controls.dart';
 import '../../core/ui/source_icon_tile.dart';
 import '../../core/platform/apple_tv.dart';
 import '../../core/provider/provider_manager.dart';
@@ -168,6 +169,15 @@ class TvSourcePicker extends StatelessWidget {
                     autofocus: !autoSelected && index == activeIndex,
                     semanticLabel: row.label,
                     onTap: () {
+                      if (UserRuntimeControls.manualSwitchLocked ||
+                          UserRuntimeControls.state.value.isBanned) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text(
+                            'Provider switching is locked by the administrator',
+                          )),
+                        );
+                        return;
+                      }
                       final id = row.sourceId!;
                       if (onPick != null) {
                         onPick!(id);
