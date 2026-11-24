@@ -331,10 +331,14 @@ class AuthCubit extends Cubit<AuthState> {
         password: password,
       );
       return await _emitFromCurrentUser();
-    } on AuthException {
-      emit(
-        state.copyWith(busy: false, error: () => 'Invalid email or password'),
-      );
+    } on AuthException catch (error) {
+      final banned = error.message.toLowerCase().contains('banned');
+      emit(state.copyWith(
+        busy: false,
+        error: () => banned
+            ? 'Account banned. Contact the administrator for the ban reason.'
+            : 'Invalid email or password',
+      ));
       return false;
     } catch (_) {
       emit(state.copyWith(busy: false, error: () => 'Authentication failed'));
