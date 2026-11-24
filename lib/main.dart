@@ -67,6 +67,7 @@ import 'features/onboarding/boot_error_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/profiles/profile_launch_gate.dart';
 import 'features/shell/root_shell.dart';
+import 'features/auth/user_account_gate.dart';
 import 'features/watch_together/ui/party_bar.dart';
 import 'features/watch_together/watch_together_controller.dart';
 
@@ -829,7 +830,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   }
 
   /// Go directly from the branded splash to the app, on every device.
-  Widget _buildShellHome() => ProfileLaunchGate(child: RootShell());
+  Widget _buildShellHome() => const UserAccountGate(
+        child: ProfileLaunchGate(child: RootShell()),
+      );
 
   /// Swaps the splash route for the real shell (phone / Android TV only).
   void _pushShellRouteIfNeeded() {
