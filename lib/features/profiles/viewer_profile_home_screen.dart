@@ -13,7 +13,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart' show ProfileAccountSection;
-import '../auth/pair_tv_screen.dart';
 import '../settings/settings_screen.dart';
 import 'viewer_profile_editor_screen.dart';
 import 'viewer_profiles_screen.dart';
@@ -59,45 +58,6 @@ class ViewerProfileHomeScreen extends StatelessWidget {
     await Navigator.of(context).push<void>(route);
     await route.completed;
     onPickerClosed?.call();
-  }
-
-  void _openMenu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('App settings'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _openSettings(context);
-              },
-            ),
-            if (sl.isRegistered<AuthCubit>())
-              BlocBuilder<AuthCubit, AuthState>(
-                bloc: sl<AuthCubit>(),
-                builder: (_, state) => state.isLoggedIn
-                    ? ListTile(
-                        leading: const Icon(Icons.tv_outlined),
-                        title: const Text('Pair a TV'),
-                        onTap: () {
-                          Navigator.of(sheetContext).pop();
-                          Navigator.of(context).push(PairTvScreen.route());
-                        },
-                      )
-                    : const SizedBox.shrink(),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -249,14 +209,14 @@ class ViewerProfileHomeScreen extends StatelessWidget {
               Text('Profile', style: AppText.title),
               const Spacer(),
               IconButton(
-                tooltip: 'Profile menu',
-                onPressed: () => _openMenu(context),
+                tooltip: 'Settings',
+                onPressed: () => _openSettings(context),
                 style: IconButton.styleFrom(
                   foregroundColor: AppColors.textPrimary,
                   backgroundColor: AppColors.surface,
                   shape: const CircleBorder(),
                 ),
-                icon: const Icon(Icons.more_horiz_rounded),
+                icon: const Icon(Icons.settings_outlined),
               ),
             ],
           ),
@@ -375,14 +335,14 @@ class ViewerProfileHomeScreen extends StatelessWidget {
                 ),
                 const Spacer(),
                 IconButton(
-                  tooltip: 'Profile menu',
-                  onPressed: () => _openMenu(context),
+                  tooltip: 'Settings',
+                  onPressed: () => _openSettings(context),
                   style: IconButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     backgroundColor: Colors.black.withValues(alpha: 0.5),
                     shape: const CircleBorder(),
                   ),
-                  icon: const Icon(Icons.more_horiz_rounded),
+                  icon: const Icon(Icons.settings_outlined),
                 ),
               ],
             ),
