@@ -268,11 +268,11 @@ void main() {
   });
 
   test(
-    'Android Player is marked experimental in the player settings label',
+    'Android Player uses the stable player settings label',
     () {
       final l10n = lookupAppLocalizations(const Locale('en'));
 
-      expect(l10n.androidPlayer, 'Android Player (Experimental)');
+      expect(l10n.androidPlayer, 'Android Player');
     },
   );
 
