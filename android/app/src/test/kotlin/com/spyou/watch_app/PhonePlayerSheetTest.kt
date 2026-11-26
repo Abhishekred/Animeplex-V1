@@ -71,22 +71,57 @@ class PhonePlayerSheetTest {
     }
 
     @Test @Config(qualifiers = "port")
-    fun `track columns retain version audio subtitle and addon actions`() {
+    fun `audio and subtitle sheet lists every row and runs the one tapped`() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         try {
-            var picked = -1
-            val labels = arrayOf("Version: Sub", "Version: Dub", "Audio: Auto", "Audio: Japanese", "Subtitles: Off", "Subtitles: English", "Addon subtitles…")
-            for ((index, label) in labels.withIndex()) {
+            var picked = ""
+            fun row(label: String, selected: Boolean = false, detail: String? = null) =
+                PhonePlayerSheet.SheetRow(label, detail = detail, selected = selected) { picked = label }
+            val audio = listOf(row("SUB", true), row("DUB"), row("Auto"), row("Japanese", detail = "Stereo · AAC"))
+            val subs = listOf(row("Preferred language: Auto"), row("Off"), row("English", true), row("Arabic"))
+            val footer = listOf(row("Subtitle style"))
+            for (label in (audio + subs + footer).map { it.label }) {
                 val dialog = PhonePlayerSheet(controller.get())
-                    .setTrackItems(labels, 2, 4, setOf(0, 2, 5)) { _, chosen -> picked = chosen }
-                    .setTitle("Audio & subtitles").show()
+                    .setAudioSubtitleSheet(audio, subs, footer).show()
                 val items = texts(dialog.window!!.decorView)
-                assertTrue(items.single { it.text == "English" }.isSelected)
-                val row = items.single { it.text == label.substringAfter(": ").removeSuffix(" ✓") }
-                row.performClick()
-                assertEquals(index, picked)
+                assertTrue(items.single { it.text == "English" }.isShown)
+                assertTrue(items.any { it.text == "Stereo · AAC" })
+                // A tap lands on the text and bubbles up to the row that owns the click.
+                var tapped: android.view.View = items.single { it.text == label }
+                while (!tapped.hasOnClickListeners()) tapped = tapped.parent as android.view.View
+                tapped.performClick()
+                assertEquals(label, picked)
                 assertFalse(dialog.isShowing)
             }
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test @Config(qualifiers = "port")
+    fun `delay control steps in quarter seconds, reports once, and flushes on close`() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            val reported = mutableListOf<Int>()
+            val dialog = PhonePlayerSheet(controller.get())
+                .setDelayControl(0) { reported += it }.setTitle("Subtitle delay").show()
+            val root = dialog.window!!.decorView
+            fun buttons(): List<android.widget.ImageView> {
+                val found = mutableListOf<android.widget.ImageView>()
+                fun walk(v: android.view.View) {
+                    if (v is android.widget.ImageView && v.contentDescription != null) found += v
+                    if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                }
+                walk(root)
+                return found
+            }
+            val later = buttons().single { it.contentDescription == "Later" }
+            repeat(3) { later.performClick() }
+            // Three quick taps are one change, and nothing is sent yet.
+            assertTrue(reported.isEmpty())
+            assertTrue(texts(root).any { it.text == "+0.75s" })
+            // Closing the sheet sends the pending total instead of dropping it.
+            dialog.dismiss()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(listOf(750), reported)
         } finally { controller.pause().stop().destroy() }
     }
 

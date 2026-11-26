@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:floating/floating.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'playback_loading_title.dart' show playbackArtworkHeaders;
 
@@ -26,13 +29,18 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/parental_guide_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
+import '../../core/playback/subtitle_shift.dart';
+import '../../core/playback/subtitle_translate_service.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/tv_track_helpers.dart';
+import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/playback/tv_playback_helpers.dart' show shouldScrobble;
 import '../../core/theme/app_colors.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tracker/simkl_playback_session.dart';
@@ -41,7 +49,11 @@ import 'subtitle_font_service.dart';
 import 'player_controls_config.dart';
 import 'player_engine_fallback.dart';
 import 'player_lifecycle.dart';
-import 'player_screen.dart' show openSubtitleStyleSheet;
+import 'player_screen.dart'
+    show
+        openSubtitleStyleSheet,
+        showOnlineSubtitleSheet,
+        showTranslateLanguageSheet;
 import 'subtitle_style.dart';
 import 'watch_page_info.dart';
 import 'in_app_mini_player.dart';
@@ -266,7 +278,8 @@ Map<String, dynamic> phonePlayerArgs({
   required double subtitleScale,
   required int subtitleFgColor,
   required int subtitleBgColor,
-  required int subtitleEdgeType,
+  String subtitleOutlineType = 'soft',
+  double subtitleOutlineWidth = 2.0,
   required int subtitleEdgeColor,
   required String subtitlePreference,
   int subtitlePosition = 95,
@@ -339,7 +352,8 @@ Map<String, dynamic> phonePlayerArgs({
     'subtitleScale': subtitleScale,
     'subtitleFgColor': subtitleFgColor,
     'subtitleBgColor': subtitleBgColor,
-    'subtitleEdgeType': subtitleEdgeType,
+    'subtitleOutlineType': subtitleOutlineType,
+    'subtitleOutlineWidth': subtitleOutlineWidth,
     'subtitleEdgeColor': subtitleEdgeColor,
     'subtitlePreference': subtitlePreference,
     'subtitlePosition': subtitlePosition.clamp(0, 100),
@@ -402,13 +416,26 @@ Future<void> phoneScrobbleOnLaunch({
   );
 }
 
-bool phoneShouldScrobbleOnFirstFrame({
+/// Whether the episode now counts as watched on AniList / MAL: the same rule
+/// the MPV and TV players use. Past 92%, or the stream ended on its own (covers
+/// streams that never report a length). Once per episode, never while peeking.
+bool phoneShouldScrobbleOnProgress({
   required bool playerOpen,
-  required bool alreadyScrobbled,
   required bool peek,
-  required int episodeIndex,
-  required int startIndex,
-}) => playerOpen && !alreadyScrobbled && !peek && episodeIndex == startIndex;
+  required bool alreadyScrobbled,
+  required int positionMs,
+  required int durationMs,
+  required bool ended,
+}) =>
+    playerOpen &&
+    !peek &&
+    !alreadyScrobbled &&
+    (ended ||
+        shouldScrobble(
+          positionMs: positionMs,
+          durationMs: durationMs,
+          alreadyScrobbled: false,
+        ));
 
 typedef PhoneSourcesPoll =
     Future<({List<VideoSource> sources, bool done})> Function(
@@ -586,7 +613,8 @@ class PhoneNativePlayer {
   static int _startIndex = 0;
   static int _resumeOverride = 0;
   static bool _seedUsed = false;
-  static bool _scrobbled = false;
+  static final Set<int> _scrobbledEpisodes = {};
+  static bool _markedWatching = false;
   static SimklPlaybackSession? _simklPlayback;
   static int _simklIndex = -1;
   static bool _isMovie = false;
@@ -727,7 +755,8 @@ class PhoneNativePlayer {
     _startIndex = startIndex;
     _resumeOverride = resumePosition;
     _seedUsed = false;
-    _scrobbled = false;
+    _scrobbledEpisodes.clear();
+    _markedWatching = false;
     _simklPlayback?.stop();
     _simklPlayback = null;
     _simklIndex = -1;
@@ -765,7 +794,8 @@ class PhoneNativePlayer {
         '#000000',
         opacity: prefs.subtitleBgOpacity,
       ).toARGB32(),
-      subtitleEdgeType: tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+      subtitleOutlineType: prefs.subtitleOutlineType,
+      subtitleOutlineWidth: prefs.subtitleOutlineWidth,
       subtitleEdgeColor: parseSubtitleHex(
         prefs.subtitleOutlineColorHex,
       ).toARGB32(),
@@ -912,7 +942,8 @@ class PhoneNativePlayer {
               '#000000',
               opacity: prefs.subtitleBgOpacity,
             ).toARGB32(),
-            'edgeType': tvEdgeTypeFromOutlinePref(prefs.subtitleOutlineType),
+            'outlineType': prefs.subtitleOutlineType,
+            'outlineWidth': prefs.subtitleOutlineWidth,
             'edgeColor': parseSubtitleHex(
               prefs.subtitleOutlineColorHex,
             ).toARGB32(),
@@ -925,6 +956,205 @@ class PhoneNativePlayer {
       _subtitleStyleRoute = null;
       _subtitleStyleOpen = false;
       if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
+
+  /// Same Flutter picker the MPV sheet uses, shown over the native player.
+  static Future<void> _pickSubtitleLanguage(int sessionId) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    try {
+      final prefs = sl<PlaybackPrefs>();
+      final picked = await showSubtitleLanguagePicker(
+        navigator.context,
+        prefs.subtitlePreference,
+        onRoute: (route) => _subtitleStyleRoute = route,
+      );
+      if (picked != null && sessionId == _sessionId) {
+        await prefs.setSubtitlePreference(picked);
+        await _ch.invokeMethod('setSubtitlePreference', {
+          'sessionId': sessionId,
+          'value': picked,
+        });
+      }
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
+
+  /// Online subtitle search over the native player; the chosen file is handed
+  /// back to the player as a new track.
+  static Future<void> _searchSubtitlesOnline(int sessionId) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    try {
+      final title = _showTitle.trim().isNotEmpty
+          ? _showTitle.trim()
+          : (_scrobbleTitle?.trim() ?? '');
+      await showOnlineSubtitleSheet(
+        navigator.context,
+        initialQuery: title,
+        imdbId: _imdbId,
+        tmdbId: _tmdbId,
+        onRoute: (route) => _subtitleStyleRoute = route,
+        onApply: (path) async {
+          if (sessionId != _sessionId) return;
+          final name = path.split(RegExp(r'[\\/]')).last;
+          final dot = name.lastIndexOf('.');
+          await _ch.invokeMethod('addLocalSubtitle', {
+            'sessionId': sessionId,
+            'path': path,
+            'label': dot > 0 ? name.substring(0, dot) : name,
+          });
+        },
+      );
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+  }
+
+  static Future<void> _toastNative(int sessionId, String text) async {
+    if (sessionId != _sessionId) return;
+    try {
+      await _ch.invokeMethod('showToast', {
+        'sessionId': sessionId,
+        'text': text,
+      });
+    } catch (_) {}
+  }
+
+  /// Asks for a language over the native player, then translates [url] in the
+  /// background and hands the result back as a new track.
+  static Future<void> _translateSubtitle(int sessionId, String url) async {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null || _subtitleStyleOpen) return;
+    _subtitleStyleOpen = true;
+    final cover = PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+    unawaited(navigator.push(cover));
+    String? iso;
+    try {
+      iso = await showTranslateLanguageSheet(
+        navigator.context,
+        current: sl<PlaybackPrefs>().translateSubtitleTo,
+        onRoute: (route) => _subtitleStyleRoute = route,
+      );
+    } finally {
+      _subtitleStyleRoute = null;
+      _subtitleStyleOpen = false;
+      if (navigator.mounted && cover.isActive) navigator.removeRoute(cover);
+    }
+    if (iso == null || sessionId != _sessionId) return;
+    unawaited(sl<PlaybackPrefs>().setTranslateSubtitleTo(iso));
+    unawaited(_runTranslation(sessionId, url, iso));
+  }
+
+  /// The text of a subtitle the native player is showing: a cached file, or a
+  /// web address.
+  static Future<String> _readSubtitleText(String url) async {
+    final uri = Uri.parse(url);
+    if (uri.scheme == 'file') return File(uri.toFilePath()).readAsString();
+    final response = await sl<Dio>().get<String>(
+      url,
+      options: Options(
+        responseType: ResponseType.plain,
+        validateStatus: (_) => true,
+      ),
+    );
+    return response.data ?? '';
+  }
+
+  /// A copy of the subtitle at [url] moved by [deltaMs], as a local file path
+  /// (null when it can't be read).
+  static Future<String?> _shiftedSubtitle(String url, int deltaMs) async {
+    try {
+      final shifted = shiftSubtitle(await _readSubtitleText(url), deltaMs);
+      if (shifted.trim().isEmpty) return null;
+      final dir = await getTemporaryDirectory();
+      final path = Uri.parse(url).path;
+      final dot = path.lastIndexOf('.');
+      final ext = dot > 0 && path.length - dot <= 5
+          ? path.substring(dot + 1)
+          : 'srt';
+      final out = File(
+        '${dir.path}/shifted_${DateTime.now().millisecondsSinceEpoch}.$ext',
+      );
+      await out.writeAsString(shifted, flush: true);
+      return out.path;
+    } catch (e) {
+      debugPrint('[subtitle-shift] failed: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _runTranslation(
+    int sessionId,
+    String url,
+    String iso,
+  ) async {
+    final String content;
+    try {
+      content = await _readSubtitleText(url);
+    } catch (_) {
+      await _toastNative(sessionId, "Couldn't load the subtitle");
+      return;
+    }
+    if (content.trim().isEmpty) {
+      await _toastNative(sessionId, 'Subtitle is empty');
+      return;
+    }
+    await _toastNative(sessionId, 'Translating subtitles…');
+    try {
+      var lastTenth = -1;
+      final srt = await SubtitleTranslateService.instance.translate(
+        content,
+        iso,
+        onProgress: (p) {
+          final tenth = (p * 10).floor();
+          if (tenth != lastTenth && tenth > 0 && tenth < 10) {
+            lastTenth = tenth;
+            unawaited(_toastNative(sessionId, 'Translating… ${tenth * 10}%'));
+          }
+        },
+      );
+      if (sessionId != _sessionId) return;
+      final dir = await getTemporaryDirectory();
+      final out = File('${dir.path}/translated_${iso}_$sessionId.srt');
+      await out.writeAsString(srt, flush: true);
+      await _ch.invokeMethod('addLocalSubtitle', {
+        'sessionId': sessionId,
+        'path': out.path,
+        'label': 'Translated (${languageByPref(iso)?.name ?? iso})',
+        'language': iso,
+      });
+      await _toastNative(sessionId, 'Subtitles translated');
+    } catch (e) {
+      debugPrint(
+        '[subtitle-translate] failed: $e '
+        '(starts "${content.trimLeft().substring(0, content.trimLeft().length.clamp(0, 12))}")',
+      );
+      await _toastNative(sessionId, "Couldn't translate subtitles");
     }
   }
 
@@ -1058,11 +1288,58 @@ class PhoneNativePlayer {
         }
         await _showSubtitleStyle(_sessionId);
         return null;
+      case 'shiftSubtitle':
+        final shiftArgs = _callArgs(call);
+        final shiftUrl = shiftArgs?['url'] as String?;
+        final deltaMs = (shiftArgs?['deltaMs'] as num?)?.toInt();
+        if (_closed?.isCompleted != false ||
+            shiftArgs?['sessionId'] != _sessionId ||
+            shiftUrl == null ||
+            deltaMs == null) {
+          return null;
+        }
+        return _shiftedSubtitle(shiftUrl, deltaMs);
+      case 'openTranslateSubtitles':
+        final translateArgs = _callArgs(call);
+        final subtitleUrl = translateArgs?['url'] as String?;
+        if (_closed?.isCompleted != false ||
+            translateArgs?['sessionId'] != _sessionId ||
+            subtitleUrl == null ||
+            subtitleUrl.isEmpty) {
+          return null;
+        }
+        await _translateSubtitle(_sessionId, subtitleUrl);
+        return null;
+      case 'openOnlineSubtitles':
+        final onlineArgs = _callArgs(call);
+        if (_closed?.isCompleted != false ||
+            onlineArgs?['sessionId'] != _sessionId) {
+          return null;
+        }
+        await _searchSubtitlesOnline(_sessionId);
+        return null;
+      case 'openSubtitleLanguage':
+        final args = _callArgs(call);
+        if (_closed?.isCompleted != false || args?['sessionId'] != _sessionId) {
+          return null;
+        }
+        await _pickSubtitleLanguage(_sessionId);
+        return null;
       case 'closeSubtitleStyle':
         final route = _subtitleStyleRoute;
         if (_callArgs(call)?['sessionId'] == _sessionId &&
             route?.isActive == true) {
           route?.navigator?.removeRoute(route);
+        }
+        return null;
+      case 'setVideoDecoder':
+        final args = _callArgs(call);
+        final mode = args?['mode'];
+        if (_closed?.isCompleted == false &&
+            args?['sessionId'] == _sessionId &&
+            mode is String &&
+            const {'copy', 'direct', 'sw', 'auto'}.contains(mode)) {
+          await sl<PlaybackPrefs>().setVideoDecoder(mode);
         }
         return null;
       case 'rememberSubtitle':
@@ -1146,6 +1423,24 @@ class PhoneNativePlayer {
               },
           ],
         };
+      case 'parentalGuideFor':
+        final gArgs = _callArgs(call);
+        final gIndex = (gArgs?['index'] as num?)?.toInt() ?? -1;
+        if (_closed?.isCompleted != false ||
+            gArgs?['sessionId'] != _sessionId ||
+            gIndex < 0 ||
+            gIndex >= _episodes.length ||
+            !sl<PlaybackPrefs>().parentalGuide) {
+          return null;
+        }
+        // Anime has no IMDb entry; skip the lookup rather than guess.
+        if (_malId != null || _scrobbleTitle != null) return null;
+        final warnings = await sl<ParentalGuideService>().warnings(
+          imdbId: _imdbId,
+          tmdbId: _tmdbId,
+          isTv: !_isMovie,
+        );
+        return [for (final w in warnings) w.toJson()];
       case 'resolveEpisode':
         final rArgs = _callArgs(call);
         final index = (rArgs?['index'] as num?)?.toInt() ?? -1;
@@ -1176,28 +1471,29 @@ class PhoneNativePlayer {
             unawaited(_pollLateMirrors(scope));
           }
         }
-        if (!phoneShouldScrobbleOnFirstFrame(
-          playerOpen: _closed?.isCompleted == false,
-          alreadyScrobbled: _scrobbled,
-          peek: _peek,
-          episodeIndex: index,
-          startIndex: _startIndex,
-        )) {
-          return null;
+        // Like the MPV player: starting only marks the title as "watching".
+        // The episode itself counts as watched later, past 92% (see
+        // _saveProgress), so opening and closing straight away changes nothing.
+        if (!_markedWatching &&
+            !_peek &&
+            _closed?.isCompleted == false &&
+            sl.isRegistered<TrackerHub>() &&
+            (_malId != null ||
+                (_scrobbleTitle?.isNotEmpty ?? false) ||
+                _tmdbId != null ||
+                (_imdbId?.isNotEmpty ?? false))) {
+          _markedWatching = true;
+          unawaited(
+            sl<TrackerHub>().markWatching(
+              malId: _malId,
+              title: _scrobbleTitle,
+              tmdbId: _tmdbId,
+              tmdbIsTv: _tmdbIsTv,
+              imdbId: _imdbId,
+              simklLive: true,
+            ),
+          );
         }
-        _scrobbled = true;
-        unawaited(
-          phoneScrobbleOnLaunch(
-            episode: _episodes[index],
-            episodes: _episodes,
-            malId: _malId,
-            scrobbleTitle: _scrobbleTitle,
-            tmdbId: _tmdbId,
-            tmdbIsTv: _tmdbIsTv,
-            imdbId: _imdbId,
-            simklLive: true,
-          ),
-        );
         return null;
       case 'watchDownloadOptions':
       case 'watchDownloadChoose':
@@ -1621,7 +1917,7 @@ class PhoneNativePlayer {
         return null;
       case 'saveProgress':
         final args = _callArgs(call);
-        await _saveProgress(args, flush: true);
+        await _saveProgress(args, flush: args?['periodic'] != true);
         _preheatNearEnd(args);
         return null;
       case 'playerClosed':
@@ -2045,6 +2341,30 @@ class PhoneNativePlayer {
       Duration(milliseconds: positionMs),
       Duration(milliseconds: durationMs),
     );
+    if (phoneShouldScrobbleOnProgress(
+      playerOpen: _closed?.isCompleted == false,
+      peek: _peek,
+      alreadyScrobbled: _scrobbledEpisodes.contains(i),
+      positionMs: positionMs,
+      durationMs: durationMs,
+      ended: args['ended'] == true,
+    )) {
+      _scrobbledEpisodes.add(i);
+      unawaited(
+        phoneScrobbleOnLaunch(
+          episode: ep,
+          episodes: _episodes,
+          malId: _malId,
+          scrobbleTitle: _scrobbleTitle,
+          tmdbId: _tmdbId,
+          tmdbIsTv: _tmdbIsTv,
+          imdbId: _imdbId,
+          // Simkl follows the live session already; a second write would
+          // count the episode twice.
+          simklLive: _simklPlayback != null && durationMs > 0,
+        ),
+      );
+    }
     final history = _history;
     if (history != null && _showTitle.isNotEmpty) {
       unawaited(

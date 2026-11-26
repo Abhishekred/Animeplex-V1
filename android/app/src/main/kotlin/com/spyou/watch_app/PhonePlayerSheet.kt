@@ -36,6 +36,14 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
     private val surface = 0xFF16161C.toInt()
     private val secondary = 0xFFA7A7B2.toInt()
 
+    /** The tallest a sheet may be: [share] of what the bars leave on screen. */
+    private fun capPx(share: Float = 0.6f): Int {
+        val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
+            ?.getInsets(WindowInsetsCompat.Type.systemBars())
+        val bottom = (insets?.bottom ?: 0) + dp(12)
+        return ((context.resources.displayMetrics.heightPixels - (insets?.top ?: 0) - bottom) * share).toInt()
+    }
+
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density + 0.5f).toInt()
     private fun shape(color: Int, radius: Int = 10) = GradientDrawable().apply {
         setColor(color)
@@ -45,6 +53,16 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
     private fun ripple(radius: Int = 10) = RippleDrawable(
         ColorStateList.valueOf(0x1AFFFFFF), null, shape(Color.WHITE, radius),
     )
+
+    private var flush: (() -> Unit)? = null
+
+    /** Also runs [flush] first, so a sheet with a pending change never loses it on close. */
+    override fun setOnDismissListener(listener: DialogInterface.OnDismissListener?): PhonePlayerSheet = apply {
+        super.setOnDismissListener { d ->
+            flush?.invoke()
+            listener?.onDismiss(d)
+        }
+    }
 
     override fun setTitle(title: CharSequence?): PhonePlayerSheet = apply { heading = title }
     override fun setTitle(titleId: Int): PhonePlayerSheet = setTitle(context.getText(titleId))
@@ -142,33 +160,218 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
         scroll(grid)
     }
 
-    fun setTrackItems(labels: Array<String>, audioStart: Int, subtitleStart: Int,
-                      selected: Set<Int>, listener: DialogInterface.OnClickListener): PhonePlayerSheet = apply {
-        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        fun addRows(parent: LinearLayout, range: IntRange) {
-            for (index in range) {
-                parent.addView(label(labels[index].substringAfter(": ").removeSuffix(" ✓"), index in selected).apply {
-                    foreground = ripple()
-                    setOnClickListener { dialog?.let { listener.onClick(it, index); it.dismiss() } }
-                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3); bottomMargin = dp(3) })
-            }
+    /** One line in the Audio & subtitles sheet. */
+    internal class SheetRow(
+        val label: String,
+        val detail: String? = null,
+        val selected: Boolean = false,
+        val icon: Int? = null,
+        val onClick: () -> Unit,
+    )
+
+    /** A scroll area that never grows past [maxPx]. */
+    private class CappedScroll(context: Context, private val maxPx: Int) : ScrollView(context) {
+        init {
+            // Rows are tapped, never focused; focus would scroll the list on open.
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         }
-        addRows(content, 0 until audioStart)
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) = super.onMeasure(
+            widthSpec, View.MeasureSpec.makeMeasureSpec(maxPx, View.MeasureSpec.AT_MOST),
+        )
+    }
+
+    private fun sheetRow(row: SheetRow, close: () -> Unit): View {
+        val line = LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(48)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = shape(if (row.selected) (accent and 0x00FFFFFF) or 0x26000000 else Color.TRANSPARENT)
+            foreground = ripple()
+            setOnClickListener { close(); row.onClick() }
+        }
+        row.icon?.let {
+            line.addView(ImageView(context).apply {
+                setImageResource(it)
+                setColorFilter(secondary)
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(12) })
+        }
+        val text = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        text.addView(TextView(context).apply {
+            textSize = 14f
+            this.text = row.label
+            setTextColor(if (row.selected) accent else Color.WHITE)
+            setTypeface(typeface, if (row.selected) Typeface.BOLD else Typeface.NORMAL)
+        })
+        row.detail?.let { detail ->
+            text.addView(TextView(context).apply {
+                textSize = 12f
+                this.text = detail
+                setTextColor(secondary)
+            })
+        }
+        line.addView(text, LinearLayout.LayoutParams(0, -2, 1f))
+        if (row.selected) {
+            line.addView(ImageView(context).apply {
+                setImageDrawable(context.getDrawable(R.drawable.phone_player_check)!!.mutate().also { it.setTint(accent) })
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginStart = dp(8) })
+        }
+        return line
+    }
+
+    /**
+     * The Audio & subtitles sheet, laid out like the MPV player's: Audio and
+     * Subtitles side by side (each scrolls on its own), then a divider and the
+     * settings rows underneath.
+     */
+    fun setAudioSubtitleSheet(audio: List<SheetRow>, subtitles: List<SheetRow>, footer: List<SheetRow>): PhonePlayerSheet = apply {
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        fun close() { dialog?.dismiss() }
+        // The columns take whatever the sheet has left after its footer, so the
+        // sheet as a whole fits without a second, competing scroll.
+        val widthDp = context.resources.displayMetrics.run { widthPixels / density }.coerceAtMost(560f)
+        val footerColumns = if (widthDp >= 480) 5 else 3
+        val footerRows = (footer.size + footerColumns - 1) / footerColumns
+        val footerPx = if (footer.isEmpty()) 0 else footerRows * dp(84) + dp(20)
+        val cap = (capPx(0.85f) - footerPx - dp(110)).coerceAtLeast(dp(96))
         val columns = LinearLayout(context)
-        for ((title, range) in listOf(
-            R.string.phone_player_watch_audio to (audioStart until subtitleStart),
-            R.string.phone_player_title_subtitles to (subtitleStart until labels.size),
-        )) {
+        val sections = listOf(
+            context.getText(R.string.phone_player_watch_audio) to audio,
+            context.getText(R.string.phone_player_title_subtitles) to subtitles,
+        )
+        for ((index, section) in sections.withIndex()) {
+            val (title, rows) = section
             val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            column.addView(label(context.getText(title)).apply {
+            column.addView(label(title).apply {
                 textSize = 13f
                 setTextColor(secondary)
                 setTypeface(typeface, Typeface.BOLD)
             })
-            addRows(column, range)
+            val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            var current: View? = null
+            for (row in rows) {
+                val view = sheetRow(row, ::close)
+                if (row.selected && current == null) current = view
+                list.addView(view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2); bottomMargin = dp(2) })
+            }
+            column.addView(CappedScroll(context, cap).apply {
+                addView(list)
+                // Open at the top, or at the playing track when it sits far down.
+                post { scrollTo(0, ((current?.top ?: 0) - dp(56)).coerceAtLeast(0)) }
+            })
+            if (index == 1) columns.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
+                LinearLayout.LayoutParams(dp(1), -1).apply { setMargins(dp(4), dp(8), dp(4), dp(8)) })
             columns.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
         }
         content.addView(columns)
+        if (footer.isNotEmpty()) {
+            content.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) },
+                LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(dp(4), dp(10), dp(4), dp(6)) })
+            // Actions in a grid, icon over label, so several fit side by side.
+            val actions = GridLayout(context).apply { columnCount = footerColumns }
+            for (row in footer) {
+                val action = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    minimumHeight = dp(68)
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                    background = shape(0xFF20212A.toInt(), 16)
+                    foreground = ripple(16)
+                    setOnClickListener { close(); row.onClick() }
+                }
+                row.icon?.let {
+                    action.addView(ImageView(context).apply {
+                        setImageResource(it)
+                        setColorFilter(Color.WHITE)
+                    }, LinearLayout.LayoutParams(dp(24), dp(24)))
+                }
+                action.addView(TextView(context).apply {
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    text = row.label
+                    setTextColor(Color.WHITE)
+                }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
+                actions.addView(action, GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(4), dp(4), dp(4), dp(4))
+                })
+            }
+            content.addView(actions, LinearLayout.LayoutParams(-1, -2))
+        }
+        // No outer scroll view: the two lists scroll on their own, and a second
+        // scroller around them would fight for the same swipe.
+        content.setPadding(dp(12), 0, dp(12), dp(12))
+        setView(content)
+    }
+
+    /**
+     * The delay control, laid out like the MPV sheet's: a label, then − value +
+     * and a reset, in 0.25 s steps. [onChange] gets the new total after the
+     * viewer pauses for a moment, so a run of taps moves the subtitles once.
+     */
+    fun setDelayControl(initialMs: Int, onChange: (totalMs: Int) -> Unit): PhonePlayerSheet = apply {
+        var total = initialMs
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var pending = false
+        val send = Runnable { pending = false; onChange(total) }
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val value = TextView(context).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val reset = ImageView(context).apply {
+            setImageResource(R.drawable.sheet_ic_reset)
+            setColorFilter(secondary)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            foreground = ripple(20)
+        }
+        fun show() {
+            val secs = String.format(java.util.Locale.US, "%.2f", total / 1000f)
+            value.text = if (total > 0) "+${secs}s" else "${secs}s"
+            value.setTextColor(if (total == 0) secondary else accent)
+            reset.alpha = if (total == 0) 0.35f else 1f
+        }
+        fun bump(delta: Int) {
+            total = (total + delta).coerceIn(-30000, 30000)
+            show()
+            pending = true
+            handler.removeCallbacks(send)
+            handler.postDelayed(send, 700)
+        }
+        fun stepButton(icon: Int, description: String, delta: Int) = ImageView(context).apply {
+            setImageResource(icon)
+            setColorFilter(Color.WHITE)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = shape(0xFF20212A.toInt(), 20)
+            foreground = ripple(20)
+            contentDescription = description
+            setOnClickListener { bump(delta) }
+        }
+        reset.setOnClickListener { if (total != 0) bump(-total) }
+        val row = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(TextView(context).apply {
+            textSize = 14f
+            text = "Delay"
+            setTextColor(Color.WHITE)
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+        row.addView(stepButton(R.drawable.sheet_ic_minus, "Earlier", -250), LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(value, LinearLayout.LayoutParams(dp(76), -2))
+        row.addView(stepButton(R.drawable.sheet_ic_plus, "Later", 250), LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(reset, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(4) })
+        content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        content.addView(TextView(context).apply {
+            textSize = 12f
+            setTextColor(secondary)
+            text = "Later (+) if the words come too early, earlier (-) if they come too late."
+        }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), dp(12), dp(8), dp(4)) })
+        show()
+        // Anything still waiting goes through, so closing the sheet never drops a change.
+        flush = { if (pending) { handler.removeCallbacks(send); send.run() } }
+        setOnDismissListener(null)
         scroll(content)
     }
 
@@ -203,7 +406,7 @@ internal class PhonePlayerSheet(context: Context) : AlertDialog.Builder(context,
             ?.getInsets(WindowInsetsCompat.Type.systemBars())
         val bottom = (insets?.bottom ?: 0) + dp(12)
         val width = minOf(metrics.widthPixels, dp(580))
-        val cap = ((metrics.heightPixels - (insets?.top ?: 0) - bottom) * 0.6f).toInt()
+        val cap = capPx()
         window.setBackgroundDrawable(InsetDrawable(shape(surface, 24).apply { setStroke(dp(1), 0x14FFFFFF) },
             dp(10), 0, dp(10), bottom))
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)

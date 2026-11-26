@@ -120,6 +120,43 @@ object PhonePlayerBridge {
                         result.success(false)
                     }
                 }
+                "showToast" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val text = call.argument<String>("text")
+                    if (target != null && target.sessionId == session && !text.isNullOrBlank()) {
+                        target.showToast(text)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "addLocalSubtitle" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val path = call.argument<String>("path")
+                    if (target != null && target.sessionId == session && !path.isNullOrBlank()) {
+                        target.addLocalSubtitle(
+                            path,
+                            call.argument<String>("label").orEmpty().ifBlank { "Subtitle" },
+                            call.argument<String>("language"),
+                        )
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "setSubtitlePreference" -> {
+                    val target = PhonePlayerActivity.active
+                    val session = call.argument<Number>("sessionId")?.toLong()
+                    val value = call.argument<String>("value")
+                    if (target != null && target.sessionId == session && value != null) {
+                        target.updateSubtitlePreference(value)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "updateSubtitleStyle" -> {
                     val target = PhonePlayerActivity.active
                     val session = call.argument<Number>("sessionId")?.toLong()
@@ -127,14 +164,15 @@ object PhonePlayerBridge {
                     val position = call.argument<Number>("position")?.toInt()
                     val foreground = call.argument<Number>("foreground")?.toInt()
                     val background = call.argument<Number>("background")?.toInt()
-                    val edgeType = call.argument<Number>("edgeType")?.toInt()
+                    val outlineType = call.argument<String>("outlineType")
+                    val outlineWidth = call.argument<Number>("outlineWidth")?.toFloat()
                     val edgeColor = call.argument<Number>("edgeColor")?.toInt()
                     if (target != null && target.sessionId == session && scale?.isFinite() == true &&
                         position != null && foreground != null && background != null &&
-                        edgeType != null && edgeColor != null
+                        outlineType != null && outlineWidth != null && edgeColor != null
                     ) {
                         target.updateSubtitleStyle(scale, position, foreground, background,
-                            edgeType, edgeColor, call.argument<String>("fontPath"))
+                            outlineType, outlineWidth, edgeColor, call.argument<String>("fontPath"))
                         result.success(true)
                     } else {
                         result.success(false)
@@ -154,7 +192,12 @@ object PhonePlayerBridge {
         channel = null
     }
 
-    internal fun openSubtitleStyle(player: PhonePlayerActivity): Dialog? {
+    /** Shows one of Dart's Flutter sheets over the player; [method] says which. */
+    internal fun openFlutterSheet(
+        player: PhonePlayerActivity,
+        method: String,
+        extra: Map<String, Any?> = emptyMap(),
+    ): Dialog? {
         if (player.isFinishing || player.isDestroyed) return null
         val (host, engine) = flutterHost ?: return null
         val bridge = channel ?: return null
@@ -163,7 +206,7 @@ object PhonePlayerBridge {
         if (original.attachedFlutterEngine !== engine || host.isDestroyed) return null
         val texture = FlutterTextureView(player).apply { isOpaque = false }
         val overlay = FlutterView(player, texture)
-        val args = mapOf("sessionId" to player.sessionId)
+        val args = mapOf("sessionId" to player.sessionId) + extra
         var closedByFlutter = false
         val dialog = object : Dialog(player, android.R.style.Theme_DeviceDefault_NoActionBar) {
             @Deprecated("Flutter handles back navigation in the overlay")
@@ -203,7 +246,7 @@ object PhonePlayerBridge {
             return null
         }
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        bridge.invokeMethod("openSubtitleStyle", args, object : MethodChannel.Result {
+        bridge.invokeMethod(method, args, object : MethodChannel.Result {
             override fun success(result: Any?) {
                 closedByFlutter = true
                 dialog.dismiss()
@@ -355,8 +398,12 @@ object PhonePlayerBridge {
                 (call.argument<Number>("subtitleBgColor") ?: 0).toInt(),
             )
             i.putExtra(
-                PhonePlayerIntent.EXTRA_SUB_EDGE_TYPE,
-                (call.argument<Number>("subtitleEdgeType") ?: 1).toInt(),
+                PhonePlayerIntent.EXTRA_SUB_OUTLINE_TYPE,
+                call.argument<String>("subtitleOutlineType") ?: "soft",
+            )
+            i.putExtra(
+                PhonePlayerIntent.EXTRA_SUB_OUTLINE_WIDTH,
+                (call.argument<Number>("subtitleOutlineWidth") ?: 2.0).toFloat(),
             )
             i.putExtra(
                 PhonePlayerIntent.EXTRA_SUB_EDGE_COLOR,

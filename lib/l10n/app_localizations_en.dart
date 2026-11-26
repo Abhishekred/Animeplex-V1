@@ -1992,7 +1992,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioDelay => 'Audio delay';
 
   @override
-  String get androidPlayer => 'Android Player (Experimental)';
+  String get androidPlayer => 'Android Player';
 
   @override
   String get androidPlayerUnavailable => 'Android Player could not start';
@@ -3182,6 +3182,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relations => 'Relations';
+
+  @override
+  String get overview => 'Overview';
+
+  @override
+  String get director => 'Director';
+
+  @override
+  String get writer => 'Writer';
 
   @override
   String get characters => 'Characters';

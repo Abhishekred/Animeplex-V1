@@ -712,6 +712,78 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
   }
 }
 
+/// "Translate subtitles to…": the language list as a bottom sheet. Returns the
+/// ISO-639-1 code picked, or null when dismissed. Shared by both players.
+Future<String?> showTranslateLanguageSheet(
+  BuildContext context, {
+  required String current,
+  ValueChanged<ModalRoute<dynamic>?>? onRoute,
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      onRoute?.call(ModalRoute.of(sheetContext));
+      return _SheetSurface(
+        child: SafeArea(
+          top: false,
+          child: _SheetColumn(
+            header: sheetContext.l10n.translateSubtitlesTo,
+            children: [
+              for (final lang in kSubtitleLanguages)
+                _SheetRow(
+                  label: lang.name,
+                  active: lang.iso1 == current,
+                  onTap: () => Navigator.pop(sheetContext, lang.iso1),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Opens the online subtitle search (OpenSubtitles) as a bottom sheet. Shared
+/// by the MPV player and the native Android player; [onApply] gets the path of
+/// the downloaded subtitle file.
+Future<void> showOnlineSubtitleSheet(
+  BuildContext context, {
+  required String initialQuery,
+  required Future<void> Function(String localPath) onApply,
+  String? imdbId,
+  int? tmdbId,
+  ValueChanged<ModalRoute<dynamic>?>? onRoute,
+}) {
+  // Default the manual search to the preferred language, falling back to
+  // English when none is set.
+  final preferred = sl<PlaybackPrefs>().preferredSubtitleLanguage;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      onRoute?.call(ModalRoute.of(sheetContext));
+      return _SheetSurface(
+        blur: true,
+        opacity: 0.82,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: SafeArea(
+          top: false,
+          child: _OnlineSubtitleSheet(
+            initialQuery: initialQuery,
+            initialLanguage: preferred.isEmpty ? 'en' : preferred,
+            imdbId: imdbId,
+            tmdbId: tmdbId,
+            onApply: onApply,
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// Opens the Subtitle-style sheet (font / colour / background / position /
 /// size). Lives over whatever opened it; changes apply live via the controller.
 /// Opens the shared Subtitle-style sheet (live preview + all controls). Pass a
