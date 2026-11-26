@@ -3,6 +3,7 @@ name: AnimePlex Test2 Unsigned APK
 on:
   push:
     branches:
+      - test
       - test2
       - test2-upstream-integration-20261124
   workflow_dispatch:
