@@ -61,7 +61,7 @@ jobs:
 
       - name: Verify curated catalogue playback
         if: github.ref_name == 'oldap'
-        run: flutter test test/core/repository/curated_catalogue_test.dart
+        run: flutter test test/core/repository/curated_catalogue_test.dart test/features/catalogue/catalogue_screen_test.dart
 
       - name: Prepare Android release build
         run: flutter build apk --release --config-only

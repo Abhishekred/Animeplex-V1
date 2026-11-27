@@ -17,11 +17,15 @@ class CuratedTitle {
       tmdbId = row['tmdb_id'] as int,
       name = row['title'] as String,
       poster = row['poster_url'] as String,
+      language = row['language_badge'] as String? ?? '',
+      backdrop = row['backdrop_url'] as String? ?? '',
+      rating = (row['rating'] as num?)?.toDouble(),
       providers = List<String>.from(row['provider_ids'] as List);
 
   final bool series;
   final int tmdbId;
-  final String name, poster;
+  final String name, poster, language, backdrop;
+  final double? rating;
   final List<String> providers;
 
   String get url => 'apcatalog://${series ? 'series' : 'movie'}/$tmdbId';
@@ -49,18 +53,56 @@ class CuratedCatalogue {
   static const _table = 'animeplex_curated_titles';
   SupabaseClient get _db => Supabase.instance.client;
 
-  Future<List<CuratedTitle>> titles() async {
-    final titles = <CuratedTitle>[];
-    for (var start = 0; ; start += 500) {
-      final rows = await _db
-          .from(_table)
-          .select()
-          .order('kind')
-          .order('sort_order')
-          .order('tmdb_id')
-          .range(start, start + 499);
-      titles.addAll(rows.map(CuratedTitle.new));
-      if (rows.length < 500) return titles;
+  Future<List<String>> platforms() async {
+    final rows = await _db.rpc('animeplex_catalogue_platforms');
+    return [for (final row in rows as List) row['platform'] as String];
+  }
+
+  Future<List<CuratedTitle>> page({
+    String? kind,
+    String? platform,
+    String search = '',
+    bool trending = false,
+    int offset = 0,
+    int limit = 12,
+  }) async {
+    var filter = _db.from(_table).select();
+    if (kind != null) filter = filter.eq('kind', kind);
+    if (platform != null) filter = filter.eq('platform', platform);
+    if (trending) filter = filter.eq('trending', true);
+    if (search.isNotEmpty) {
+      final literal = search
+          .replaceAll(r'\', r'\\')
+          .replaceAll('%', r'\%')
+          .replaceAll('_', r'\_');
+      filter = filter.ilike('title', '%$literal%');
+    }
+    final rows = await filter
+        .order('sort_order')
+        .order('kind')
+        .order('tmdb_id')
+        .range(offset, offset + limit - 1);
+    return rows.map(CuratedTitle.new).toList();
+  }
+
+  Future<List<CuratedTitle>> rail({
+    String? kind,
+    String? platform,
+    String search = '',
+    bool trending = false,
+  }) async {
+    final items = <CuratedTitle>[];
+    for (var start = 0; ; start += 200) {
+      final batch = await page(
+        kind: kind,
+        platform: platform,
+        search: search,
+        trending: trending,
+        offset: start,
+        limit: 200,
+      );
+      items.addAll(batch);
+      if (batch.length < 200) return items;
     }
   }
 
