@@ -5,6 +5,7 @@ on:
     branches:
       - test
       - test2
+      - oldap
       - test2-upstream-integration-20261124
   workflow_dispatch:
 
@@ -23,6 +24,7 @@ jobs:
     env:
       ZANGETSU_NO_DISCORD: "1"
       ZANGETSU_UNSIGNED_APK: "1"
+      APK_LABEL: ${{ github.ref_name == 'oldap' && 'oldap' || 'test2' }}
 
     steps:
       - name: Checkout selected branch
@@ -56,6 +58,10 @@ jobs:
 
       - name: Test Home catalogue gestures
         run: flutter test test/features/home/source_catalogue_home_content_test.dart --plain-name 'CloudStream rows sharing a category stay interactive on Home'
+
+      - name: Verify curated catalogue playback
+        if: github.ref_name == 'oldap'
+        run: flutter test test/core/repository/curated_catalogue_test.dart
 
       - name: Prepare Android release build
         run: flutter build apk --release --config-only
@@ -91,14 +97,14 @@ jobs:
             exit 1
           fi
           mkdir -p dist
-          cp "$apk" dist/AnimePlex-test2-unsigned.apk
-          echo "Unsigned APK ready: $(du -h dist/AnimePlex-test2-unsigned.apk | cut -f1)"
+          cp "$apk" "dist/AnimePlex-${APK_LABEL}-unsigned.apk"
+          echo "Unsigned APK ready: $(du -h "dist/AnimePlex-${APK_LABEL}-unsigned.apk" | cut -f1)"
 
       - name: Upload unsigned APK only
         uses: actions/upload-artifact@v4
         with:
-          name: AnimePlex-test2-unsigned-${{ github.run_number }}
-          path: dist/AnimePlex-test2-unsigned.apk
+          name: AnimePlex-${{ env.APK_LABEL }}-unsigned-${{ github.run_number }}
+          path: dist/AnimePlex-${{ env.APK_LABEL }}-unsigned.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

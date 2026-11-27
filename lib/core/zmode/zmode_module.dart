@@ -10,6 +10,7 @@ import '../profiles/viewer_profile.dart';
 import '../playback/source_health_store.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/catalogue_router.dart';
+import '../repository/curated_catalogue.dart';
 import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
 import 'mal_catalogue.dart';
@@ -64,6 +65,8 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     () => StreamingProvidersService(TmdbCatalogue.dioGet(sl<Dio>())),
   );
 
+  final tmdb = TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>()));
+  sl.registerSingleton<CuratedCatalogue>(CuratedCatalogue(tmdb, sl<SourceMatcher>(), sl<SourceRepository>()));
   sl.registerSingleton<MetadataRepository>(
     MetadataRepository(
       anilist: AniListCatalogue(
@@ -72,7 +75,7 @@ Future<void> registerZangetsuMode(GetIt sl) async {
             sl<PlaybackPrefs>().adultMetadata &&
             sl<ViewerProfileStore>().adultMetadataAllowed,
       ),
-      tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
+      tmdb: tmdb,
       searchCandidates: sweepCandidates,
       mal: MalCatalogue(sl<Dio>()),
       simkl: SimklCatalogue(sl<Dio>()),
@@ -113,6 +116,7 @@ Future<void> registerZangetsuMode(GetIt sl) async {
 
   sl.registerSingleton<CatalogueRepository>(
     CatalogueRouter(
+      curated: sl<CuratedCatalogue>(),
       source: sl<SourceRepository>(),
       metadata: sl<MetadataRepository>(),
       enabled: () => ZModePrefs.enabled,

@@ -6,12 +6,13 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'home_catalogue_prefs.dart';
+import '../catalogue/catalogue_screen.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 
-enum _MetadataSheetAction { sourceCatalogue }
+enum _MetadataSheetAction { sourceCatalogue, curatedCatalogue }
 
 enum HomeCatalogueSelection { metadata, source, stremio }
 
@@ -134,6 +135,13 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                     ),
                   ),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.video_library_outlined),
+                  title: const Text('AnimePlex Catalogue'),
+                  subtitle: const Text('Browse web series and movies'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(sheet).pop(_MetadataSheetAction.curatedCatalogue),
+                ),
                 if (animeFirst) ...[
                   ...animeSection(sheet),
                   const SizedBox(height: 6),
@@ -216,6 +224,14 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   );
 
   if (picked == null) return null;
+  if (picked == _MetadataSheetAction.curatedCatalogue) {
+    if (context.mounted) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => const CatalogueScreen(),
+      ));
+    }
+    return null;
+  }
   if (picked == _MetadataSheetAction.sourceCatalogue) {
     return HomeCatalogueSelection.source;
   }

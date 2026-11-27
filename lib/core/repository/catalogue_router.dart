@@ -9,6 +9,7 @@ import '../models/video_source.dart';
 import '../logging/app_logger.dart';
 import '../zmode/zmode_ids.dart';
 import 'catalogue_repository.dart';
+import 'curated_catalogue.dart';
 
 /// Sits in front of both catalogues and forwards each call:
 ///
@@ -25,11 +26,13 @@ class CatalogueRouter implements CatalogueRepository {
   CatalogueRouter({
     required CatalogueRepository source,
     required CatalogueRepository metadata,
+    this.curated,
     required bool Function() enabled,
   }) : _source = source,
        _meta = metadata,
        _enabled = enabled;
 
+  final CuratedCatalogue? curated;
   final CatalogueRepository _source;
   final CatalogueRepository _meta;
   final bool Function() _enabled;
@@ -44,9 +47,11 @@ class CatalogueRouter implements CatalogueRepository {
   List<({String id, String name})> get loadedSources => _browse.loadedSources;
   @override
   bool hasSource(String sourceId) =>
-      sourceId == ZmodeIds.sourceId ? _enabled() : _source.hasSource(sourceId);
+      sourceId == CuratedCatalogue.id || (sourceId == ZmodeIds.sourceId ? _enabled() : _source.hasSource(sourceId));
   @override
-  String displayName(String sourceId) => sourceId == ZmodeIds.sourceId
+  String displayName(String sourceId) => sourceId == CuratedCatalogue.id
+      ? 'AnimePlex Catalogue'
+      : sourceId == ZmodeIds.sourceId
       ? _meta.displayName(sourceId)
       : _source.displayName(sourceId);
   @override
@@ -88,6 +93,7 @@ class CatalogueRouter implements CatalogueRepository {
     void Function(MediaDetail partial)? onPartial,
     bool Function()? abandoned,
   }) {
+    if (CuratedCatalogue.owns(url)) return curated!.detail(url);
     final via = ZmodeIds.isZ(url) ? 'metadata' : 'source';
     AppLogger.instance.log('[detail] route $via url=$url sourceId=$sourceId');
     return _forUrl(url).detail(
@@ -107,7 +113,9 @@ class CatalogueRouter implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) => _forUrl(url).episodes(url, category: category, sourceId: sourceId);
+  }) => CuratedCatalogue.owns(url)
+      ? curated!.detail(url).then((detail) => detail.episodes)
+      : _forUrl(url).episodes(url, category: category, sourceId: sourceId);
 
   @override
   Future<List<VideoSource>> sources(
@@ -115,6 +123,7 @@ class CatalogueRouter implements CatalogueRepository {
     String? sourceId,
     bool fast = false,
   }) {
+    if (CuratedCatalogue.owns(episodeUrl)) return curated!.streams(episodeUrl, fast: fast);
     final via = ZmodeIds.isZ(episodeUrl) ? 'metadata' : 'source';
     debugPrint(
       '[catalogue-router] sources · via=$via url=$episodeUrl '
@@ -131,5 +140,8 @@ class CatalogueRouter implements CatalogueRepository {
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {
     String? sourceId,
-  }) => _forUrl(episodeUrl).polledSources(episodeUrl, sourceId: sourceId);
+  }) async {
+    if (CuratedCatalogue.owns(episodeUrl)) return (sources:<VideoSource>[], done:true);
+    return _forUrl(episodeUrl).polledSources(episodeUrl, sourceId:sourceId);
+  }
 }
