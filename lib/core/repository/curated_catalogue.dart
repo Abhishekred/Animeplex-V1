@@ -44,14 +44,20 @@ class CuratedTitle {
 }
 
 class CuratedCatalogue {
-  CuratedCatalogue(this.tmdb, this.matcher, this.sources);
+  CuratedCatalogue(
+    this.tmdb,
+    this.matcher,
+    this.sources, {
+    SupabaseClient? client,
+  }) : _client = client;
+  final SupabaseClient? _client;
   final TmdbCatalogue tmdb;
   final SourceMatcher matcher;
   final SourceRepository sources;
   static const id = 'animeplex-catalogue';
   static bool owns(String url) => url.startsWith('apcatalog://');
   static const _table = 'animeplex_curated_titles';
-  SupabaseClient get _db => Supabase.instance.client;
+  SupabaseClient get _db => _client ?? Supabase.instance.client;
 
   Future<List<String>> platforms() async {
     final rows = await _db.rpc('animeplex_catalogue_platforms');
@@ -78,9 +84,9 @@ class CuratedCatalogue {
       filter = filter.ilike('title', '%$literal%');
     }
     final rows = await filter
-        .order('sort_order')
-        .order('kind')
-        .order('tmdb_id')
+        .order('sort_order', ascending: true)
+        .order('kind', ascending: true)
+        .order('tmdb_id', ascending: true)
         .range(offset, offset + limit - 1);
     return rows.map(CuratedTitle.new).toList();
   }
