@@ -54,30 +54,28 @@ class _Feed implements CuratedCatalogue {
 }
 
 void main() {
-  testWidgets('Home exposes the switcher and profile rows on the full catalogue',
+  testWidgets('Home exposes the switcher and Continue Watching on the full catalogue',
       (tester) async {
     sl.registerSingleton<CuratedCatalogue>(_Feed());
     addTearDown(() => sl.unregister<CuratedCatalogue>());
     var switched = false;
     await tester.pumpWidget(MaterialApp(home: CatalogueScreen(
       onSwitchCatalogue: () => switched = true,
-      profileSlivers: const [
-        SliverToBoxAdapter(child: Text('Continue Watching')),
-        SliverToBoxAdapter(child: Text('My List')),
-      ],
+      continueWatching: const SliverToBoxAdapter(child: Text('Continue Watching')),
     )));
     await tester.pump();
     await tester.pump();
     expect(find.text('Continue Watching'), findsOneWidget);
-    expect(find.text('My List'), findsOneWidget);
+    expect(find.text('My List'), findsNothing);
+    expect(find.text('Web Series'), findsOneWidget);
     await tester.tap(find.byTooltip('Switch catalogue'));
     expect(switched, isTrue);
     await tester.tap(find.text('Prime Video'));
     await tester.pump();
-    expect(find.text('My List'), findsNothing);
+    expect(find.text('Continue Watching'), findsNothing);
     await tester.tap(find.text('ALL'));
     await tester.pump();
-    expect(find.text('My List'), findsOneWidget);
+    expect(find.text('Continue Watching'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

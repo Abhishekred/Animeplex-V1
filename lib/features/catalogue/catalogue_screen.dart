@@ -11,11 +11,11 @@ class CatalogueScreen extends StatefulWidget {
   const CatalogueScreen({
     super.key,
     this.onSwitchCatalogue,
-    this.profileSlivers = const [],
+    this.continueWatching,
   });
 
   final VoidCallback? onSwitchCatalogue;
-  final List<Widget> profileSlivers;
+  final Widget? continueWatching;
   @override
   State<CatalogueScreen> createState() => _CatalogueScreenState();
 }
@@ -366,7 +366,8 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
                               ),
                             ),
                           ),
-                        if (platform == null && query.isEmpty) ...widget.profileSlivers,
+                        if (platform == null && query.isEmpty && widget.continueWatching != null)
+                          widget.continueWatching!,
                         if (loading)
                           const SliverToBoxAdapter(child: CatalogueShimmer())
                         else if (failed)

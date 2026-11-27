@@ -1512,22 +1512,10 @@ class _HomeViewState extends State<_HomeView> {
     if (_curatedSelected && sl<ContentModeCubit>().state == ContentMode.anime) {
       return CatalogueScreen(
         onSwitchCatalogue: _openHomeCataloguePicker,
-        profileSlivers: [
-          _homeRowSliver(const LocalContinueHomeRow(), sourceId: CuratedCatalogue.id),
-          ValueListenableBuilder<int>(
-            valueListenable: _myList.revision,
-            builder: (context, _, _) {
-              final saved = _myList.all()
-                  .where((item) => item.sourceId == CuratedCatalogue.id)
-                  .toList();
-              return SliverToBoxAdapter(
-                child: saved.isEmpty
-                    ? const SizedBox.shrink()
-                    : _sectionRow(HomeSection(title: context.l10n.myList, items: saved)),
-              );
-            },
-          ),
-        ],
+        continueWatching: _homeRowSliver(
+          const LocalContinueHomeRow(),
+          sourceId: CuratedCatalogue.id,
+        ),
       );
     }
     if (sl<AppMode>().isTv) return const HomeScreenTv();
