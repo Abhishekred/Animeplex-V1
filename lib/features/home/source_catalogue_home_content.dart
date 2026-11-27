@@ -427,10 +427,23 @@ class SourceCatalogueHomeContentState
     // No hero lives in this widget to absorb the dropped first row the way
     // the main Home screen's does — show every row the source returned.
     final rows = sections;
-    final keys = [
-      for (var i = 0; i < rows.length; i++)
-        ValueKey(rows[i].more?.categoryId ?? '${rows[i].title}:$i'),
-    ];
+    // A CloudStream mainPage request can return several named lists with
+    // the same paging descriptor. Each visible list needs its own element.
+    final occurrences = <(String?, String?), int>{};
+    final keys = rows.map((row) {
+      final more = row.more;
+      final category = more?.categoryId;
+      final name = category == null || more?.kind == 'cs_mainpage'
+          ? row.title
+          : null;
+      final identity = (category, name);
+      final occurrence = occurrences.update(
+        identity,
+        (n) => n + 1,
+        ifAbsent: () => 0,
+      );
+      return ValueKey((_sourceId, identity, occurrence));
+    }).toList(growable: false);
     final indices = {for (var i = 0; i < keys.length; i++) keys[i]: i};
     return SliverMainAxisGroup(
       slivers: [

@@ -15,6 +15,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/ui/content_row.dart';
 import 'package:watch_app/core/ui/row_skeleton.dart';
 import 'package:watch_app/features/home/source_catalogue_home_content.dart';
 
@@ -517,6 +518,101 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('CloudStream rows sharing a category stay interactive on Home', (
+    tester,
+  ) async {
+    const source = 'cs:AniVortex';
+    const more = BrowseMore(
+      sourceId: source,
+      kind: 'cs_mainpage',
+      categoryId: 'home',
+    );
+    final gate = Completer<List<HomeSection>>();
+    final repository = _GatedSourceRepository(const [
+      (id: source, name: 'AniVortex'),
+    ], gate);
+    String? opened;
+    String? expanded;
+    var hasBanner = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Scaffold(
+            body: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: SizedBox(height: hasBanner ? 180 : 0),
+                ),
+                SourceCatalogueHomeContent(
+                  sliver: true,
+                  initialSourceId: source,
+                  repository: repository,
+                  showSourcePicker: false,
+                  onSectionsChanged: (sections) {
+                    setState(() => hasBanner = sections.isNotEmpty);
+                  },
+                  sectionBuilder: (row) => ContentRow(
+                    title: row.title,
+                    itemWidth: 120,
+                    itemHeight: 140,
+                    itemCount: row.items.length,
+                    onSeeAll: () => expanded = row.title,
+                    itemBuilder: (_, i) => TextButton(
+                      onPressed: () => opened = row.items[i].id,
+                      child: Text(row.items[i].title),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final titles = [
+      'Featured Now',
+      'Recently Added Movies',
+      'Recently Added Series',
+      'Recently Added Series',
+    ];
+    gate.complete([
+      for (var r = 0; r < titles.length; r++)
+        HomeSection(
+          title: titles[r],
+          more: more,
+          items: [
+            for (var i = 0; i < 12; i++)
+              MediaItem(
+                id: '$r-$i',
+                title: 'Poster $r-$i',
+                url: '/$r/$i',
+                type: ProviderType.movie,
+                sourceId: source,
+              ),
+          ],
+        ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Poster 0-0'));
+    expect(opened, '0-0');
+    await tester.tap(find.text('See All').first);
+    expect(expanded, titles.first);
+    final poster = find.text('Poster 0-2');
+    final x = tester.getCenter(poster).dx;
+    await tester.drag(poster, const Offset(-260, 0));
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(poster).dx, lessThan(x));
+    final movies = find.text('Recently Added Movies');
+    final y = tester.getCenter(movies).dy;
+    await tester.drag(movies, const Offset(0, -320));
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(movies).dy, lessThan(y));
+    await tester.tap(find.text('Poster 2-0'));
+    expect(opened, '2-0');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('other source catalogues also build only nearby rows', (
     tester,
