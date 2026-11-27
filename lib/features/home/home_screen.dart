@@ -39,6 +39,8 @@ import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/repository/curated_catalogue.dart';
+import '../catalogue/catalogue_screen.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/admin/user_runtime_controls.dart';
@@ -156,6 +158,7 @@ class _HomeViewState extends State<_HomeView> {
   // every mode switch — a single shared id is what made manga forget anime.
   String? _sourceCatalogueSourceId;
   List<HomeSection> _sourceCatalogueSections = const [];
+  bool _curatedSelected = HomeCataloguePrefs.curatedSelected;
   bool _sourceCatalogueSelected = HomeCataloguePrefs.catalogueShown;
 
   /// Hero metadata cache: key = "sourceId:id". Futures are stored so they're
@@ -200,7 +203,7 @@ class _HomeViewState extends State<_HomeView> {
       mode,
     ) {
       if (!mounted) return;
-      if (_sourceCatalogueSelected) {
+      if (_curatedSelected || _sourceCatalogueSelected) {
         // Reload THIS mode's saved source: the content widget resolves its
         // fallback from the id we hand it, so handing it the other mode's id
         // would persist a fallback over this mode's real pick.
@@ -319,12 +322,14 @@ class _HomeViewState extends State<_HomeView> {
     final sourceId = HomeCataloguePrefs.sourceIdFor(
       sl<ContentModeCubit>().state,
     );
-    if (selected == _sourceCatalogueSelected &&
+    if (HomeCataloguePrefs.curatedSelected == _curatedSelected &&
+        selected == _sourceCatalogueSelected &&
         sourceId == _sourceCatalogueSourceId) {
       return;
     }
     setState(() {
       _sourceCatalogueSelected = selected;
+      _curatedSelected = HomeCataloguePrefs.curatedSelected;
       _sourceCatalogueSourceId = sourceId;
       _sourceCatalogueSections = const [];
       if (selected && sourceId == null) {
@@ -345,6 +350,7 @@ class _HomeViewState extends State<_HomeView> {
       HomeCatalogueSelection.metadata => HomeCatalogueKind.metadata,
       HomeCatalogueSelection.source => HomeCatalogueKind.source,
       HomeCatalogueSelection.stremio => HomeCatalogueKind.stremio,
+      HomeCatalogueSelection.curated => HomeCatalogueKind.curated,
     };
     if (kind == HomeCataloguePrefs.catalogueKind) return;
     await HomeCataloguePrefs.setCatalogue(mode, kind);
@@ -1230,8 +1236,9 @@ class _HomeViewState extends State<_HomeView> {
   /// switch makes a future row type a compile error here instead of a silent
   /// gap, and the local row reuses [ContinueSection] itself so its reactive
   /// Hive/mode behaviour is identical wherever the user drags it.
-  Widget _homeRowSliver(HomeRow row) => row is LocalContinueHomeRow
+  Widget _homeRowSliver(HomeRow row, {String? sourceId}) => row is LocalContinueHomeRow
       ? ContinueSection(
+          sourceId: sourceId,
           onResume: _resume,
           onLongPress: _showContinueInfo,
           onSeeAll: _openHistory,
@@ -1502,6 +1509,27 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_curatedSelected && sl<ContentModeCubit>().state == ContentMode.anime) {
+      return CatalogueScreen(
+        onSwitchCatalogue: _openHomeCataloguePicker,
+        profileSlivers: [
+          _homeRowSliver(const LocalContinueHomeRow(), sourceId: CuratedCatalogue.id),
+          ValueListenableBuilder<int>(
+            valueListenable: _myList.revision,
+            builder: (context, _, _) {
+              final saved = _myList.all()
+                  .where((item) => item.sourceId == CuratedCatalogue.id)
+                  .toList();
+              return SliverToBoxAdapter(
+                child: saved.isEmpty
+                    ? const SizedBox.shrink()
+                    : _sectionRow(HomeSection(title: context.l10n.myList, items: saved)),
+              );
+            },
+          ),
+        ],
+      );
+    }
     if (sl<AppMode>().isTv) return const HomeScreenTv();
     // Local Continue Watching/Reading stays visible signed out; cloud sync
     // still needs an account.

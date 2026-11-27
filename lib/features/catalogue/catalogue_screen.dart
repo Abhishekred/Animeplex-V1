@@ -8,7 +8,14 @@ import '../detail/detail_screen.dart';
 import 'catalogue_art.dart';
 
 class CatalogueScreen extends StatefulWidget {
-  const CatalogueScreen({super.key});
+  const CatalogueScreen({
+    super.key,
+    this.onSwitchCatalogue,
+    this.profileSlivers = const [],
+  });
+
+  final VoidCallback? onSwitchCatalogue;
+  final List<Widget> profileSlivers;
   @override
   State<CatalogueScreen> createState() => _CatalogueScreenState();
 }
@@ -248,6 +255,12 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         actions: [
+          if (widget.onSwitchCatalogue != null)
+            IconButton(
+              tooltip: 'Switch catalogue',
+              icon: const Icon(Icons.swap_horiz),
+              onPressed: widget.onSwitchCatalogue,
+            ),
           IconButton(
             tooltip: searching ? 'Close search' : 'Search catalogue',
             icon: Icon(searching ? Icons.close : Icons.search),
@@ -353,6 +366,7 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
                               ),
                             ),
                           ),
+                        if (platform == null && query.isEmpty) ...widget.profileSlivers,
                         if (loading)
                           const SliverToBoxAdapter(child: CatalogueShimmer())
                         else if (failed)
@@ -411,6 +425,8 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
                           else if (movies.isNotEmpty && !more)
                             status('No more movies'),
                         ],
+                        if (widget.onSwitchCatalogue != null)
+                          const SliverToBoxAdapter(child: SizedBox(height: 100)),
                       ],
                     ),
                   ),

@@ -1188,7 +1188,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           'anime manga novel metadata provider anilist mal myanimelist '
           'movie tv series tmdb simkl fallback catalogue',
       trailing: _value(
-        HomeCataloguePrefs.stremioSelected
+        HomeCataloguePrefs.curatedSelected
+            ? 'AnimePlex Catalogue'
+            : HomeCataloguePrefs.stremioSelected
             ? 'Stremio'
             : HomeCataloguePrefs.sourceSelected
             ? 'Source Catalogue'
@@ -1205,6 +1207,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           HomeCatalogueSelection.metadata => HomeCatalogueKind.metadata,
           HomeCatalogueSelection.source => HomeCatalogueKind.source,
           HomeCatalogueSelection.stremio => HomeCatalogueKind.stremio,
+          HomeCatalogueSelection.curated => HomeCatalogueKind.curated,
         };
         await HomeCataloguePrefs.setCatalogue(
           sl<ContentModeCubit>().state,

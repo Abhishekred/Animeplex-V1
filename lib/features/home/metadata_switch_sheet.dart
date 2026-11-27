@@ -6,15 +6,14 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'home_catalogue_prefs.dart';
-import '../catalogue/catalogue_screen.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 
-enum _MetadataSheetAction { sourceCatalogue, curatedCatalogue }
+enum _MetadataSheetAction { sourceCatalogue }
 
-enum HomeCatalogueSelection { metadata, source, stremio }
+enum HomeCatalogueSelection { metadata, source, stremio, curated }
 
 /// Which metadata setting matches where the user is standing. The sheet shows
 /// both either way; this only decides which one it puts first.
@@ -72,6 +71,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   final sourceSelected =
       sourceCatalogueSelected ?? HomeCataloguePrefs.sourceSelected;
   final sourceCatalogueActive = sourceSelected && !stremioSelected;
+  final curatedSelected = HomeCataloguePrefs.curatedSelected;
   final prefs = sl<MetadataProviderPrefs>();
   final l10n = context.l10n;
   // Both sections, always. Hiding the one you are not standing in made the
@@ -86,7 +86,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in AnimeProvider.values)
       _ProviderRow(
         brand: _animeBrand(p),
-        selected: !sourceSelected && !stremioSelected && prefs.anime == p,
+        selected: !curatedSelected && !sourceSelected && !stremioSelected && prefs.anime == p,
         // Only worth saying while it is actually true.
         warning: p == AnimeProvider.mal && malListNeedsLogin()
             ? l10n.malLoginForLists
@@ -100,7 +100,7 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
     for (final p in VideoProvider.values)
       _ProviderRow(
         brand: _videoBrand(p),
-        selected: !sourceSelected && !stremioSelected && prefs.video == p,
+        selected: !curatedSelected && !sourceSelected && !stremioSelected && prefs.video == p,
         onTap: () => Navigator.of(sheet).pop(p),
       ),
   ];
@@ -139,8 +139,9 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
                   leading: const Icon(Icons.video_library_outlined),
                   title: const Text('AnimePlex Catalogue'),
                   subtitle: const Text('Browse web series and movies'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(sheet).pop(_MetadataSheetAction.curatedCatalogue),
+                  trailing: curatedSelected ? const Icon(Icons.check) : null,
+                  onTap: () =>
+                      Navigator.of(sheet).pop(HomeCatalogueSelection.curated),
                 ),
                 if (animeFirst) ...[
                   ...animeSection(sheet),
@@ -224,13 +225,9 @@ Future<HomeCatalogueSelection?> showMetadataSwitchSheet(
   );
 
   if (picked == null) return null;
-  if (picked == _MetadataSheetAction.curatedCatalogue) {
-    if (context.mounted) {
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const CatalogueScreen(),
-      ));
-    }
-    return null;
+  if (picked == HomeCatalogueSelection.curated) {
+    await sl<ContentModeCubit>().setMode(ContentMode.anime);
+    return HomeCatalogueSelection.curated;
   }
   if (picked == _MetadataSheetAction.sourceCatalogue) {
     return HomeCatalogueSelection.source;

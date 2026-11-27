@@ -5,7 +5,7 @@ import '../../core/mode/content_mode.dart';
 
 /// What Home is showing: a metadata catalogue, an installed source, or the
 /// Stremio addon catalogue.
-enum HomeCatalogueKind { metadata, source, stremio }
+enum HomeCatalogueKind { metadata, source, stremio, curated }
 
 /// Home-only catalogue choice. It does not change the app's active source or
 /// the source used for playback and downloads.
@@ -39,6 +39,8 @@ class HomeCataloguePrefs {
     switch (_savedKind()) {
       case 'source':
         return HomeCatalogueKind.source;
+      case 'curated':
+        return HomeCatalogueKind.curated;
       case 'stremio':
         return HomeCatalogueKind.stremio;
       default:
@@ -52,8 +54,10 @@ class HomeCataloguePrefs {
 
   static bool get stremioSelected => catalogueKind == HomeCatalogueKind.stremio;
 
-  /// True for any non-metadata Home (source catalogue or Stremio).
-  static bool get catalogueShown => catalogueKind != HomeCatalogueKind.metadata;
+  static bool get curatedSelected => catalogueKind == HomeCatalogueKind.curated;
+
+  /// Whether Home needs an extension or Stremio source ID.
+  static bool get catalogueShown => sourceSelected || stremioSelected;
 
   static ValueNotifier<bool> get sourceSelection {
     final selected = sourceSelected;

@@ -35,6 +35,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/repository/curated_catalogue.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
@@ -170,6 +171,9 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     StreamKind? kind,
     HomeCatalogueKind catalogue = HomeCatalogueKind.metadata,
   }) async {
+    if (catalogue == HomeCatalogueKind.curated) {
+      await sl<ContentModeCubit>().setMode(ContentMode.anime);
+    }
     if (kind != null) await ZModePrefs.setStreamKind(kind);
     await HomeCataloguePrefs.setCatalogue(
       sl<ContentModeCubit>().state,
@@ -281,6 +285,14 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
                           () => unawaited(
                             _selectCatalogueTab(kind: StreamKind.movie),
                           ),
+                        ),
+                        tab(
+                          'AnimePlex',
+                          'tv-home-tab-animeplex',
+                          HomeCataloguePrefs.curatedSelected,
+                          () => unawaited(_selectCatalogueTab(
+                            catalogue: HomeCatalogueKind.curated,
+                          )),
                         ),
                         tab(
                           'Source Catalogue',
@@ -448,6 +460,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     // Metadata pseudo-sources (zm) don't live in the runtime — they resolve
     // through CatalogueRouter → PlaybackResolver, so skip the check for them.
     if (e.sourceId != ZmodeIds.sourceId &&
+        e.sourceId != CuratedCatalogue.id &&
         !await sl<SourceRepository>().ensureSourceLoaded(e.sourceId)) {
       debugPrint('[tv-home] _resume · source load FAILED for ${e.sourceId}');
       if (mounted) {

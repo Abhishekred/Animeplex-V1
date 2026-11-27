@@ -456,8 +456,10 @@ class WatchHistory {
   }
 
   /// Newest-first, excluding finished episodes (the Continue Watching feed).
-  List<HistoryEntry> recent({int limit = 20}) {
-    final all = _entriesFor(_profileId).where((e) => !e.finished).toList()
+  List<HistoryEntry> recent({int limit = 20, String? sourceId}) {
+    final all = _entriesFor(_profileId)
+        .where((e) => !e.finished && (sourceId == null || e.sourceId == sourceId))
+        .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return all.take(limit).toList();
   }

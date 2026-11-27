@@ -45,6 +45,7 @@ class ContinueSection extends StatelessWidget {
     required this.onResumeReading,
     required this.onLongPressReading,
     this.exitingIds = const {},
+    this.sourceId,
     this.ghostWatch = const [],
     this.ghostReading = const [],
     this.hiddenIds = const {},
@@ -62,6 +63,7 @@ class ContinueSection extends StatelessWidget {
   /// their ghost entries kept in the row until [onExited] commits the real
   /// removal — same exiting-retention as My List's poster grid.
   final Set<String> exitingIds;
+  final String? sourceId;
   final List<HistoryEntry> ghostWatch;
   final List<ReadEntry> ghostReading;
 
@@ -129,11 +131,12 @@ class ContinueSection extends StatelessWidget {
         //
         // Manga and novel stay separate — they are a different store and a
         // different row (Continue READING), routed above by `mode.isReading`.
-        final history = sl<WatchHistory>().recent();
+        final history = sl<WatchHistory>().recent(sourceId: sourceId);
         // Ghosts of cards mid-dissolve, re-sorted by recency so each holds
         // its slot instead of jumping to the end.
         final all = [...history];
         for (final g in ghostWatch) {
+          if (sourceId != null && g.sourceId != sourceId) continue;
           if (all.every((e) => watchGhostKey(e) != watchGhostKey(g))) {
             all.add(g);
           }
