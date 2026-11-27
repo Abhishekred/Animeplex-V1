@@ -21,6 +21,7 @@ import java.io.File
 class CsPluginLoaderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ExtensionDonationDialogs.install(supportFragmentManager)
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
         val paths = intent.getStringArrayExtra(EXTRA_PATHS) ?: emptyArray()

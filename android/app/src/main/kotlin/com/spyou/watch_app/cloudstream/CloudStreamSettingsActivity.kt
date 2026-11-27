@@ -27,6 +27,7 @@ class CloudStreamSettingsActivity : AppCompatActivity() {
     private var dialogTookFocus = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ExtensionDonationDialogs.install(supportFragmentManager)
         super.onCreate(savedInstanceState)
 
         val apiName = intent.getStringExtra(EXTRA_API_NAME)

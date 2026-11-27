@@ -5,16 +5,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhisherDonationBlockerTest {
-    @Test fun blocksOnlyKnownPhisherDonationFragments() {
-        assertTrue(PhisherDonationBlocker.isBlockedDialogClassName(
+    @Test fun blocksOnlyKnownExtensionDonationFragments() {
+        assertTrue(ExtensionDonationDialogs.isBlockedDialogClassName(
             "com.phisher98.donation.DonationDialogFragment"))
-        assertTrue(PhisherDonationBlocker.isBlockedDialogClassName(
+        assertTrue(ExtensionDonationDialogs.isBlockedDialogClassName(
             "com.phisher98.donation.DonationBottomSheet"))
-        assertFalse(PhisherDonationBlocker.isBlockedDialogClassName(
+        assertTrue(ExtensionDonationDialogs.isBlockedDialogClassName(
+            "com.cncverse.donation.DonationDialogFragment"))
+        assertFalse(ExtensionDonationDialogs.isBlockedDialogClassName(
             "com.phisher98.settings.PluginSettingsDialog"))
-        assertFalse(PhisherDonationBlocker.isBlockedDialogClassName(
+        assertFalse(ExtensionDonationDialogs.isBlockedDialogClassName(
             "com.cncverse.cloudflare.CloudflareDialogFragment"))
-        assertFalse(PhisherDonationBlocker.isBlockedDialogClassName(
+        assertFalse(ExtensionDonationDialogs.isBlockedDialogClassName(
             "com.other.donation.DonationDialogFragment"))
     }
 }
