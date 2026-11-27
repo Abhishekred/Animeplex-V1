@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/user_runtime_controls.dart';
@@ -54,6 +55,10 @@ class CuratedCatalogue {
   final TmdbCatalogue tmdb;
   final SourceMatcher matcher;
   final SourceRepository sources;
+  // Detail and playback use different IDs: keep the winning provider's opaque
+  // episode data so the player can collect mirrors that arrive after fast play.
+  final _linkTargets = <String, ({String provider, String episode})>{};
+  ({String url, String name, String? nativeTitle})? _lastTitle;
   static const id = 'animeplex-catalogue';
   static bool owns(String url) => url.startsWith('apcatalog://');
   static const _table = 'animeplex_curated_titles';
@@ -130,6 +135,7 @@ class CuratedCatalogue {
   Future<MediaDetail> detail(String url) async {
     final title = await _published(Uri.parse(url));
     final data = await tmdb.detail(title.canonical);
+    _lastTitle = (url: title.url, name: data.title, nativeTitle: data.nativeTitle);
     final perSeason = <int, int>{};
     final episodes = <Episode>[];
     for (final ep in data.episodes) {
@@ -160,27 +166,54 @@ class CuratedCatalogue {
   Future<List<VideoSource>> streams(String url, {bool fast = false}) async {
     final uri = Uri.parse(url);
     if (uri.pathSegments.length != 3) return [];
-    final title = await _published(uri);
+    final title = await _published(uri).timeout(const Duration(seconds: 15));
     final season = int.parse(uri.pathSegments[1]);
     final number = int.parse(uri.pathSegments[2]);
+    final meta = _lastTitle;
+    final name = meta != null && meta.url == title.url && meta.name.trim().isNotEmpty
+        ? meta.name : title.name;
+    final nativeTitle = meta != null && meta.url == title.url ? meta.nativeTitle : null;
+
+    _linkTargets.remove(url);
     return firstPlayableProvider(title.providers, (provider) async {
       if (!UserRuntimeControls.maySelect(provider)) return [];
+      // Bound each operation separately. A successful search and episode lookup
+      // must not consume the time needed by the provider to extract video links.
+      var searching = true;
       final match = await matcher.matchOn(
         title.canonical,
         provider,
-        title: title.name,
-      );
-      if (match == null) return [];
-      final eps = await sources.episodes(match.showUrl, sourceId: provider);
+        title: name,
+        altTitle: title.name,
+        metadataAliases: [if (nativeTitle != null) nativeTitle],
+        abandoned: () => !searching || !UserRuntimeControls.maySelect(provider),
+      ).timeout(const Duration(seconds: 30)).whenComplete(() => searching = false);
+      if (match == null || !UserRuntimeControls.maySelect(provider)) return [];
+      final eps = await sources.episodes(match.showUrl, sourceId: provider)
+          .timeout(const Duration(seconds: 60));
       final ep = catalogueEpisode(eps, title.series, season, number);
       if (ep == null || !UserRuntimeControls.maySelect(provider)) return [];
-      final links = await sources.sources(
-        ep.url,
-        sourceId: provider,
-        fast: fast,
-      );
-      return UserRuntimeControls.maySelect(provider) ? links : [];
+      final links = await sources.sources(ep.url, sourceId: provider, fast: fast)
+          .timeout(Duration(seconds: fast ? 25 : 65));
+      if (!UserRuntimeControls.maySelect(provider)) return [];
+      if (links.any((link) => link.url.trim().isNotEmpty)) {
+        _linkTargets[url] = (provider: provider, episode: ep.url);
+        if (_linkTargets.length > 32) _linkTargets.remove(_linkTargets.keys.first);
+      }
+      return links;
     });
+  }
+
+  Future<({List<VideoSource> sources, bool done})> polledSources(String url) async {
+    final target = _linkTargets[url];
+    if (target == null || !UserRuntimeControls.maySelect(target.provider)) {
+      return (sources: <VideoSource>[], done: true);
+    }
+    final result = await sources.polledSources(target.episode, sourceId: target.provider);
+    if (target != _linkTargets[url] || !UserRuntimeControls.maySelect(target.provider)) {
+      return (sources: <VideoSource>[], done: true);
+    }
+    return result;
   }
 }
 
@@ -190,13 +223,14 @@ Future<List<VideoSource>> firstPlayableProvider(
 ) async {
   for (final id in ids) {
     try {
-      final links = await resolve(id).timeout(const Duration(seconds: 25));
+      final links = await resolve(id);
       final playable = links.where((s) => s.url.trim().isNotEmpty).toList();
       if (playable.isNotEmpty) return playable;
-    } on Exception {
-      continue;
-    } on StateError {
-      continue;
+      debugPrint('[curated-playback] $id returned no links; trying next provider');
+    } catch (error) {
+      // A plugin may return malformed native data (TypeError) as well as a
+      // network error. Either failure belongs to this attempt only.
+      debugPrint('[curated-playback] $id failed (${error.runtimeType}); trying next provider');
     }
   }
   return [];

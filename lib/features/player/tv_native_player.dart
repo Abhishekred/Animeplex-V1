@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/repository/curated_catalogue.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
@@ -216,6 +217,7 @@ class TvNativePlayer {
       'episodeLabel': _episodeLabel(ep),
       'episodeLabels': [for (final e in _episodes) _episodeLabel(e)],
       'episodeCount': episodes.length,
+      if (sourceId == CuratedCatalogue.id) 'catalogueFallback': true,
       'startIndex': startIndex,
       'category': category,
       'availableCategories': availableCategories,

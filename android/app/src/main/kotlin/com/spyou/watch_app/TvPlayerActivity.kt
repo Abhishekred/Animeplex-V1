@@ -71,6 +71,7 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_URL = "url"
         const val EXTRA_HEADERS = "headers"        // flat String[]: k,v,k,v
         const val EXTRA_TITLE = "title"
+        const val EXTRA_CATALOGUE_FALLBACK = "catalogueFallback"
         const val EXTRA_EP_LABEL = "episodeLabel"
         const val EXTRA_POSITION = "positionMs"    // start (resume) position
         const val EXTRA_MIME = "mimeType"
@@ -666,7 +667,9 @@ class TvPlayerActivity : Activity() {
             return true
         }
 
-        handler.postDelayed(timeout, 30_000L)
+        if (!intent.getBooleanExtra(EXTRA_CATALOGUE_FALLBACK, false)) {
+            handler.postDelayed(timeout, 30_000L)
+        }
         bridge.invokeMethod(
             "resolveEpisode",
             mapOf("index" to index, "category" to requestedCategory, "opening" to opening),
@@ -970,7 +973,9 @@ class TvPlayerActivity : Activity() {
             completed = true
             if (!isFinishing && !isDestroyed) finishPlaybackError(code, message)
         }
-        handler.postDelayed(timeout, 30_000L)
+        if (!intent.getBooleanExtra(EXTRA_CATALOGUE_FALLBACK, false)) {
+            handler.postDelayed(timeout, 30_000L)
+        }
         fetchSources {
             if (completed || isFinishing || isDestroyed) return@fetchSources
             completed = true

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:hive/hive.dart';
@@ -12,6 +13,9 @@ import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
+import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_ids.dart';
+import 'package:watch_app/core/repository/catalogue_router.dart';
 import 'package:watch_app/core/zmode/tmdb_catalogue.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/video_source.dart';
@@ -23,6 +27,45 @@ import '../playback/watch_history_supabase_test.dart' show FakeHistoryRemote;
 class _Matcher extends Fake implements SourceMatcher {}
 
 class _Sources extends Fake implements SourceRepository {}
+
+class _MovieMatcher extends _Matcher {
+  final queries = <String>[];
+
+  @override
+  Future<SourceMatch?> matchOn(ZCanonical c, String sourceId, {
+    required String title, String? altTitle, List<String> metadataAliases = const [],
+    int? malId, bool Function()? abandoned,
+  }) async {
+    queries.add(title);
+    return SourceMatch(sourceId: sourceId, showUrl: 'detail/$sourceId',
+        showId: '428078', showTitle: title, pinned: false);
+  }
+}
+
+class _MovieSources extends _Sources {
+  final attempts = <String>[];
+
+  @override
+  Future<List<Episode>> episodes(String url, {String category = 'sub', String? sourceId}) async =>
+      [Episode(id: 'film', title: 'Movie', url: 'data/$sourceId')];
+
+  @override
+  Future<List<VideoSource>> sources(String url, {String? sourceId, bool fast = false}) async {
+    attempts.add(sourceId!);
+    if (sourceId == 'cs:MovieBoxIN') throw ArgumentError('Malformed plugin response');
+    if (sourceId == 'cs:VegaMovies') return [const VideoSource(url: ' ')];
+    if (sourceId == 'cs:HDHub4U' && url == 'data/cs:HDHub4U') {
+      return [const VideoSource(url: 'https://example.test/film')];
+    }
+    return [];
+  }
+
+  @override
+  Future<({List<VideoSource> sources, bool done})> polledSources(String url, {String? sourceId}) async {
+    expect((sourceId, url), ('cs:HDHub4U', 'data/cs:HDHub4U'));
+    return (sources: [const VideoSource(url: 'https://example.test/second-mirror')], done: true);
+  }
+}
 
 void main() {
   test('curated Home persists and resumes only the active profile', () async {
@@ -76,6 +119,31 @@ void main() {
     final saved = history.recent(sourceId: CuratedCatalogue.id, limit: 1).single;
     expect(saved.episodeId, 'apcatalog://series/42/1/2');
     expect(saved.position, const Duration(minutes: 3));
+  });
+
+  test('player receives fourth provider links and polls that same provider', () async {
+    const ids = ['cs:AniVortex', 'cs:MovieBoxIN', 'cs:VegaMovies', 'cs:HDHub4U'];
+    final client = SupabaseClient('https://example.test', 'fixture',
+      httpClient: MockClient((request) async => http.Response(jsonEncode([{
+        'kind':'movie', 'tmdb_id':428078, 'title':'Mortal Engine',
+        'poster_url':'', 'provider_ids':ids,
+      }]), 200, request:request, headers:{'content-type':'application/json'})),
+    );
+    addTearDown(client.dispose);
+    final sources = _MovieSources();
+    final matcher = _MovieMatcher();
+    final curated = CuratedCatalogue(
+      TmdbCatalogue((_, _) async => {'title':'Mortal Engines'}),
+      matcher, sources, client:client,
+    );
+    final router = CatalogueRouter(source:sources, metadata:sources, curated:curated, enabled:()=>false);
+    final detail = await curated.detail('apcatalog://movie/428078');
+    final url = detail.episodes.single.url;
+    final links = await router.sources(url, sourceId:CuratedCatalogue.id, fast:true);
+    expect(sources.attempts, ids);
+    expect(matcher.queries, List.filled(ids.length,'Mortal Engines'));
+    expect(links.single.url, 'https://example.test/film');
+    expect((await router.polledSources(url)).sources.single.url, endsWith('second-mirror'));
   });
 
   test(

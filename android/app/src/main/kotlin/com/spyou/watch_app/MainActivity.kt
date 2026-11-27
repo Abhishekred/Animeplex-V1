@@ -1788,6 +1788,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 return
             }
             val intent = Intent(this, TvPlayerActivity::class.java)
+            intent.putExtra(TvPlayerActivity.EXTRA_CATALOGUE_FALLBACK, call.argument<Boolean>("catalogueFallback") ?: false)
             intent.putExtra(TvPlayerActivity.EXTRA_RESOLVE_ON_OPEN, resolveOnOpen)
             intent.putExtra(TvPlayerActivity.EXTRA_URL, url)
             for (key in listOf("loadingArtwork", "loadingLogo")) {

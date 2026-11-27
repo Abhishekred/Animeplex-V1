@@ -141,7 +141,7 @@ class CatalogueRouter implements CatalogueRepository {
     String episodeUrl, {
     String? sourceId,
   }) async {
-    if (CuratedCatalogue.owns(episodeUrl)) return (sources:<VideoSource>[], done:true);
+    if (CuratedCatalogue.owns(episodeUrl)) return curated!.polledSources(episodeUrl);
     return _forUrl(episodeUrl).polledSources(episodeUrl, sourceId:sourceId);
   }
 }

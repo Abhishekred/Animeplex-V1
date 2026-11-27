@@ -19,6 +19,7 @@ import '../../core/download/download_record.dart';
 import '../downloads/episode_download_source_sheet.dart'
     show matchDownloadEpisode, resolveEpisodeDownloadShowId;
 import '../../core/repository/catalogue_repository.dart';
+import '../../core/repository/curated_catalogue.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/discord/discord_presence.dart';
 import '../../core/share/share_link.dart';
@@ -289,6 +290,7 @@ Map<String, dynamic> phonePlayerArgs({
   required int seekSeconds,
   bool isMovie = false,
   bool stremioSubtitles = false,
+  bool catalogueFallback = false,
   bool autoPlayerFallback = false,
   bool ambientPlayer = true,
   bool megaSkip = true,
@@ -311,6 +313,7 @@ Map<String, dynamic> phonePlayerArgs({
   final mime = source == null ? null : phoneMimeFor(source);
   return <String, dynamic>{
     if (stremioSubtitles) 'stremioSubtitles': true,
+    if (catalogueFallback) 'catalogueFallback': true,
     if (autoPlayerFallback) 'autoPlayerFallback': true,
     'ambientPlayer': ambientPlayer,
     // No url: the Activity opens on its loading screen and asks Dart for the
@@ -767,6 +770,7 @@ class PhoneNativePlayer {
       episodeLabels: [for (final e in _episodes) _episodeLabel(e)],
       isMovie: _isMovie,
       stremioSubtitles: _sourceId == stremioSourceId,
+      catalogueFallback: _sourceId == CuratedCatalogue.id,
       autoPlayerFallback:
           engineFallback != null &&
           onEngineFallback != null &&
@@ -1800,19 +1804,13 @@ class PhoneNativePlayer {
         List<VideoSource> arrivals = const [];
         if (refresh) {
           try {
-            if (sl.isRegistered<CatalogueRepository>()) {
-              arrivals = await sl<CatalogueRepository>()
-                  .sources(
-                    tvEpisodeUrl(ep.url, requestCategory),
-                    sourceId: _sourceId,
-                    fast: false,
-                  )
-                  .timeout(const Duration(seconds: 15));
-            } else {
-              arrivals = await _resolveSources(
-                ep,
-              ).timeout(const Duration(seconds: 15));
-            }
+            final url = tvEpisodeUrl(ep.url, requestCategory);
+            final resolving = sl.isRegistered<CatalogueRepository>()
+                ? sl<CatalogueRepository>().sources(url, sourceId: _sourceId, fast: false)
+                : _resolveSources(ep);
+            arrivals = CuratedCatalogue.owns(url)
+                ? await resolving
+                : await resolving.timeout(const Duration(seconds: 15));
           } catch (_) {
             return const <Map>[];
           }

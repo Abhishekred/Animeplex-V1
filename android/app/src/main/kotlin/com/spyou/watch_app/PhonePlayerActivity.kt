@@ -2034,7 +2034,11 @@ class PhonePlayerActivity : Activity() {
             bumpControls()
             setBuffering(true)
         }
-        handler.postDelayed(resolveTimeout, 30_000L)
+        // Dart bounds each provider attempt. A single-source watchdog would
+        // discard a later fallback's successful reply as a stale generation.
+        if (!intent.getBooleanExtra(PhonePlayerIntent.EXTRA_CATALOGUE_FALLBACK, false)) {
+            handler.postDelayed(resolveTimeout, 30_000L)
+        }
         ch.invokeMethod(
             "resolveEpisode",
             mapOf("index" to index),
